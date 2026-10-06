@@ -1,0 +1,19 @@
+# Categories for GitHub's auto-generated notes ("Generate release notes" in the
+# UI, or `gh release create --generate-notes`). The release workflow publishes
+# the matching CHANGELOG.md section instead, so this only matters for a release
+# made by hand.
+changelog:
+  exclude:
+    labels: [ignore-for-release]
+    authors: [dependabot]
+  categories:
+    - title: Egress rules
+      labels: [egress]
+    - title: Features
+      labels: [enhancement]
+    - title: Fixes
+      labels: [bug]
+    - title: Documentation
+      labels: [documentation]
+    - title: Other changes
+      labels: ["*"]
