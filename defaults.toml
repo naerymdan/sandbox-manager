@@ -49,6 +49,36 @@ root_disk = "16G"
 # overrides. `base` is always emitted first and is not listed here.
 rule_groups = ["github", "claude"]
 
+# "enforce" — deny by default; only the rule groups below get through. This is
+#             the point of the tool and what every sandbox should sit at.
+# "observe"  — NOTHING IS BLOCKED. Egress is unrestricted and every host the
+#             sandbox reaches is written to its runtime.log, for
+#             `msbctl observe <name>` to read back.
+#
+# Observe exists because msb will not tell you what it DENIED: it logs what it
+# allows and is silent about the rest, at every log level (re-checked on 0.7.7
+# at --debug and --trace). So there is no "warn but permit" to switch on, and
+# the only way to learn what a sandbox actually needs is to let it through and
+# write down where it went. The intended use is a round trip, not a setting:
+#
+#   msbctl observe <name> on --rebuild     stop blocking, start recording
+#   …use the sandbox normally for a while…
+#   msbctl observe <name>                  every host it reached
+#   msbctl allow <name> <the ones that belong>
+#   msbctl observe <name> off --rebuild    back to deny-by-default
+#
+# What it costs while it is on: the sandbox can reach anywhere, so anything it
+# can read it can send. Secrets are NOT exposed — substitution stays host-side
+# and bound to its named hosts — but deny-by-default is the thing standing
+# between an agent and the open internet, and this takes it away. DNS rebind
+# protection comes off with it, because a dropped answer is a block like any
+# other and leaves nothing to record.
+#
+# Per sandbox, not here, unless you really mean every sandbox on this machine:
+# `msbctl observe <name> on`, or the 'Egress rules' section of `msbctl edit`.
+# Create-time like the rules themselves, so changing it needs a rebuild.
+egress_mode = "enforce"
+
 # Groups whose names resolve to PRIVATE addresses. `msbctl add` sets
 # allow_private_dns = true in a project that selects one of these, because
 # such a group does not work without it and the failure reads as a missing
@@ -240,6 +270,13 @@ go = [
 #
 # `hosts` must ALSO be reachable: a secret does not open the network. Docker
 # Hub and ghcr.io are in the `containers` egress group; pypi upload is not.
+#
+# msbctl adds `passthrough=` for the coding agent's own endpoints to every
+# binding, and you want that: msb kills any request carrying a placeholder in
+# its BODY, and an agent that has once seen `$MSB_<VAR>` carries it in every
+# request from then on — which arrives as ECONNRESET naming nothing. Passthrough
+# only lets the placeholder text travel; the real value stays headers-only and
+# goes to `hosts` and nowhere else.
 #
 # Add your own with a [secret_presets.<name>] table in your local config.toml.
 # ---------------------------------------------------------------------------
