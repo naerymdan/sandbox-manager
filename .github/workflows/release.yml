@@ -16,18 +16,22 @@ on:
   push:
     tags: ["v[0-9]+.[0-9]+.[0-9]+"]
 
-# contents: create the release and upload its assets.
-# id-token + attestations: sign a build-provenance attestation for those assets
-# (Sigstore, keyless). `get.sh` verifies it with `gh attestation verify`, which
-# is what proves a tarball was built by THIS workflow and not merely uploaded.
 permissions:
-  contents: write
-  id-token: write
-  attestations: write
+  contents: read
 
 jobs:
   release:
     runs-on: ubuntu-latest
+    # Granted to this job only, so the workflow default stays read-only.
+    # contents: create the release and upload its assets.
+    # id-token + attestations: sign a build-provenance attestation for those
+    # assets (Sigstore, keyless). `get.sh` verifies it with `gh attestation
+    # verify`, which is what proves a tarball was built by THIS workflow and
+    # not merely uploaded.
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
