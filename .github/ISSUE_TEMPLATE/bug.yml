@@ -1,0 +1,37 @@
+name: Bug
+description: msbctl or a sandbox did something wrong.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If something was refused by the network, use the "Egress denial" form instead.
+        If it is a way out of the sandbox or a leaked credential, do not file it
+        here: use the private security report link.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The `msbctl` commands, in order.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output
+      description: Paste it. Remove any token or private hostname first.
+      render: shell
+  - type: input
+    id: version
+    attributes:
+      label: Versions
+      description: Output of `msbctl --version` and `msb --version`, and your OS.
+    validations:
+      required: true

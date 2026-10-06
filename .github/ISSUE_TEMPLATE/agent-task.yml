@@ -1,0 +1,57 @@
+name: Task for a coding agent
+description: A change written so an agent can pick it up cold and finish it.
+labels: [agent-task]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        An agent starting from this issue has the repo and its `CLAUDE.md`, and nothing else.
+        Anything you know that is not in the repo has to be written here.
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What should be true when this is done? Describe the outcome, not the steps.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Why now, where the relevant code is (file and function names help), what has already been tried.
+    validations:
+      required: true
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints
+      description: What must not change or be added. `CLAUDE.md` already covers the hard ones (stdlib only, no secrets in the repo); list anything specific to this task.
+      placeholder: "e.g. must not need a rebuild of existing sandboxes"
+  - type: textarea
+    id: verify
+    attributes:
+      label: How to check it worked
+      description: Commands or observations that show success. `scripts/check.sh` always applies; add what is specific.
+    validations:
+      required: true
+  - type: dropdown
+    id: touches
+    attributes:
+      label: Touches
+      multiple: true
+      options:
+        - msbctl (the CLI)
+        - defaults.toml / egress rules
+        - bootstrap.sh (runs inside the guest)
+        - install / packaging / get.sh
+        - templates
+        - docs only
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - label: Open a PR for review. Do not push to main.
+          required: true
+        - label: Add a one-line CHANGELOG.md entry under Unreleased if behaviour changes.
+          required: true

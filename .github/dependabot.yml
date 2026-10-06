@@ -1,0 +1,11 @@
+# The code is stdlib-only, so the only dependencies are the actions the
+# workflows use. They are pinned by commit hash; this keeps the hash and the
+# version comment moving together.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "ci"
