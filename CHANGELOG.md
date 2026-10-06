@@ -9,7 +9,7 @@ release notes.
 ## [Unreleased]
 
 ### Changed
-- The `github` rule group now allows `tuf-repo-cdn.sigstore.dev`, so `gh attestation verify` can run from a sandbox; needs a rebuild.
+- The `github` rule group now allows `tuf-repo-cdn.sigstore.dev` and `tmaproduction.blob.core.windows.net`, so `gh attestation verify` can run from a sandbox; needs a rebuild.
 
 ## [0.1.0] - 2026-10-06
 
