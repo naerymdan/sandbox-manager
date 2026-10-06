@@ -1,5 +1,11 @@
 # msb-manager
 
+[![ci](https://github.com/naerymdan/sandbox-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/naerymdan/sandbox-manager/actions/workflows/ci.yml)
+[![codeql](https://github.com/naerymdan/sandbox-manager/actions/workflows/codeql.yml/badge.svg)](https://github.com/naerymdan/sandbox-manager/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/naerymdan/sandbox-manager/badge)](https://scorecard.dev/viewer/?uri=github.com/naerymdan/sandbox-manager)
+[![release](https://img.shields.io/github/v/release/naerymdan/sandbox-manager)](https://github.com/naerymdan/sandbox-manager/releases/latest)
+[![licence](https://img.shields.io/github/license/naerymdan/sandbox-manager)](LICENSE)
+
 Manage [microsandbox](https://github.com/microsandbox/microsandbox) microVMs as
 per-project agent sandboxes: deny-by-default egress, credentials that never
 enter the VM, and one picker to start, stop, rebuild and update them all.
@@ -65,7 +71,8 @@ curl -fsSL https://github.com/<owner>/msb-manager/releases/latest/download/get.s
 
 `get.sh` finds the latest release, downloads it, **verifies its sha256** against
 the checksums published with it (and installs nothing if they differ), and runs
-the installer inside it. Pin a release with `sh -s -- --version v0.2.0`; other
+the installer inside it. If an authenticated [`gh`](https://cli.github.com) is
+installed it also verifies the tarball's **build provenance** (see below). Pin a release with `sh -s -- --version v0.2.0`; other
 flags (`--prefix`, `--bin-dir`, `--no-desktop`) go to the installer.
 
 That is a **package install**: the tree is copied to
@@ -107,11 +114,33 @@ or upgrade never overwrites them:
 The first run of `msbctl` offers a short walk-through (identities, Claude login,
 your own network); `msbctl setup` returns to any of it.
 
+### Verifying a release
+
+The checksum published beside a tarball only proves the download was not damaged:
+whoever could replace the tarball could replace the checksum. Each release is
+therefore also **attested** — a Sigstore-signed statement, made by this
+repository's release workflow, of exactly which commit built which file. Check it
+yourself:
+
+```sh
+gh attestation verify msb-manager-0.1.0.tar.gz --repo naerymdan/sandbox-manager \
+    --signer-workflow naerymdan/sandbox-manager/.github/workflows/release.yml
+```
+
+`get.sh` and `msbctl self-update` run that check automatically when `gh` is
+logged in, refuse to install on a failure, and say plainly when they could only
+check the checksum. `MSB_MANAGER_SKIP_ATTEST=1` skips it.
+
 ### Releasing
+
+Releases are cut by tag, never by hand: move the `CHANGELOG.md` **Unreleased**
+entries under the new version, set `VERSION`, merge, then
+`git tag vX.Y.Z && git push origin vX.Y.Z`. The release workflow checks that the
+tag, `VERSION` and changelog agree, builds the assets, attests them and
+publishes. To build the same assets locally (without publishing):
 
 ```sh
 scripts/package.sh --version 0.2.0 --repo <owner>/msb-manager   # writes ./dist
-gh release create v0.2.0 dist/* --title v0.2.0
 ```
 
 `scripts/package.sh` copies an explicit list of files (not `.msb/`, `CLAUDE.md` or
@@ -194,7 +223,8 @@ is small, dependency-free, and commented for the person who has to debug it at
 reliable guide to that tool than its published documentation.
 
 Issues and PRs welcome, particularly from anyone running a different distro or
-a newer `msb`.
+a newer `msb`. See [CONTRIBUTING.md](CONTRIBUTING.md); vulnerabilities go through
+[SECURITY.md](SECURITY.md), not an issue.
 
 ## Licence
 

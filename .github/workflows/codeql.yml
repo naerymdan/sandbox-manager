@@ -1,0 +1,53 @@
+name: codeql
+
+# GitHub's code scanning for the Python CLI and for the workflows themselves
+# (script injection, unsafe triggers). Results land in the Security tab. The
+# shell scripts are covered by shellcheck in scripts/check.sh; CodeQL has no
+# shell extractor.
+#
+# `pull_request`, never `pull_request_target`: nothing here needs the repo's secrets.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 4 * * 1" # weekly: new queries also run against old code
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # upload the SARIF results
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [python, actions]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The Python extractor selects files by the .py extension, and `msbctl` has
+      # none. Without this it finds no source and the job fails. Alerts are
+      # reported against this copy's path (it is a byte-for-byte copy).
+      - name: Expose msbctl to the Python extractor
+        if: matrix.language == 'python'
+        run: mkdir -p codeql-src && cp msbctl codeql-src/msbctl.py
+
+      - uses: github/codeql-action/init@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+
+      - uses: github/codeql-action/analyze@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          category: /language:${{ matrix.language }}
