@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+#
+# msb-picker — the thing the desktop icon opens.
+#
+# A management console, not an attach menu: it lists every registered sandbox
+# with its state and what is out of date inside it, and binds a key to each
+# lifecycle action. The intended way INTO a sandbox is Enter, which opens the
+# editor on the project directory on the host; shelling is there for when that
+# is faster.
+#
+# Nothing here knows anything about microsandbox. Every key runs an `msbctl`
+# subcommand, so this file stays a keymap and the behaviour has exactly one
+# implementation — including multi-select, which works because those verbs
+# take `names...` rather than because this file loops.
+
+set -uo pipefail
+
+MSBCTL="${MSBCTL:-msbctl}"
+# --picker, not --porcelain: msbctl pads the display text so the columns
+# line up. fzf's --with-nth renders the ORIGINAL delimiter between the
+# fields it shows, so tab-separated input reaches the terminal with real
+# tabs in it and every one jumps to the next 8-column stop — a 7-character
+# name gets one space, an 8-character name gets eight. Exactly one tab
+# survives here, between the name and the display text, and --with-nth=2..
+# hides it.
+LIST="$MSBCTL ls --picker"
+
+# The desktop entry launches this inside a fresh terminal, so a bare `exit 1`
+# makes the window flash and vanish with the reason unread.
+fatal() {
+	printf '\n  %s\n\n' "$*" >&2
+	printf '  Press Enter to close. '
+	read -r _
+	exit 1
+}
+
+command -v "$MSBCTL" >/dev/null \
+	|| fatal "msbctl is not on PATH — run msb-manager/install.sh"
+command -v fzf >/dev/null \
+	|| fatal "fzf is not installed — sudo dnf install fzf"
+
+if [ -z "$($LIST 2>/dev/null)" ]; then
+	printf '\n  Nothing is registered yet.\n\n'
+	printf '  Register a project:   cd <project> && msbctl add\n\n'
+	printf '  Press Enter to close. '
+	read -r _
+	exit 0
+fi
+
+# Start the autostart set before drawing the list, so their state and versions
+# are current by the time it appears. Each idle sandbox costs ~300 MB and a
+# stopped one cannot be version-probed, which is the whole reason the flag
+# exists.
+if [ "${MSB_NO_AUTOSTART:-0}" != 1 ]; then
+	# mapfile, not a `while read` fed by a pipe: the loop body backgrounds a
+	# job per sandbox, and in a pipeline that body runs in a subshell where the
+	# parent's `wait` cannot see those jobs. They would then race the first
+	# `msbctl show` in the preview pane.
+	mapfile -t to_start < <(
+		$LIST 2>/dev/null | awk -F'\t' '$5 == "yes" && $2 != "running" {print $1}'
+	)
+	for name in "${to_start[@]}"; do
+		[ -n "$name" ] || continue
+		printf '  starting %s …\n' "$name"
+		"$MSBCTL" start "$name" >/dev/null 2>&1 &
+	done
+	wait
+fi
+
+HEADER=$(cat <<-'EOF'
+	enter edit   t shell    s start    x stop     l reclaim
+	u update     f refresh  n add new  e edit
+	R rebuild    D purge    (capitals: they destroy; rebuild does not ask)
+	space select  a all  j/k move  q quit
+	start/stop/rebuild/update/purge/reclaim act on every selected row
+EOF
+)
+
+# No text entry. fzf >= 0.60 can hide the input line outright; on an older fzf
+# the best available is an empty prompt and no match counter.
+if fzf --help 2>&1 | grep -q -- '--no-input'; then
+	INPUT_OPTS=(--no-input)
+else
+	INPUT_OPTS=(--prompt= --info=hidden)
+fi
+
+# execute() hands the terminal over and comes back; reload() redraws the list
+# afterwards so a state change is visible immediately rather than on next open.
+# The destructive pair (rebuild, purge) deliberately does NOT pass -y: msbctl
+# prints what it is about to delete and asks, once per sandbox, which is the
+# only confirmation step in the whole flow — and the reason a multi-selected
+# purge still asks about each one rather than taking a single blanket yes.
+#
+# {+1} is field 1 of EVERY selected row; with nothing selected fzf falls back
+# to the row under the cursor, so single-sandbox use is unchanged. The verbs
+# below take `names...`, so one invocation covers the whole selection and this
+# file stays a keymap with no loop in it.
+#
+# enter and ^t keep {1}: both hand the terminal to one thing, and "open four
+# editors" is not a useful action.
+#
+# Plain letters are the keys: no ctrl-, nothing to chord. --disabled turns the
+# fuzzy search off and INPUT_OPTS hides the input line, so no letter is ever a
+# query character — it is only ever a binding. This is a fixed, short list of
+# machines rather than a corpus to search. The destructive pair is on CAPITALS
+# (R rebuild, D purge) so a slip of the finger on r or d cannot destroy a
+# sandbox; j/k and the arrow keys both move. --layout=reverse draws the list top
+# to bottom, in the order `msbctl ls` prints it: fzf's default is bottom-up with the
+# first row beside the prompt, which makes down/j do nothing on the first row.
+exec fzf \
+	--ansi \
+	--multi \
+	--marker='◆' \
+	--disabled \
+	"${INPUT_OPTS[@]}" \
+	--layout=reverse \
+	--delimiter='\t' \
+	--with-nth='2..' \
+	--header="$HEADER" \
+	--header-first \
+	--pointer='▌' \
+	--preview="$MSBCTL show {1}" \
+	--preview-window='right,62%,border-left' \
+	--bind="space:toggle+down" \
+	--bind="a:toggle-all" \
+	--bind="j:down" \
+	--bind="k:up" \
+	--bind="f:execute($MSBCTL ls --refresh)+reload($LIST)" \
+	--bind="s:execute($MSBCTL start {+1})+reload($LIST)" \
+	--bind="x:execute($MSBCTL stop {+1})+reload($LIST)" \
+	--bind="R:execute($MSBCTL rebuild {+1})+reload($LIST)" \
+	--bind="D:execute($MSBCTL purge {+1})+reload($LIST)" \
+	--bind="u:execute($MSBCTL update {+1} -c claude gh apt)+reload($LIST)" \
+	--bind="l:execute($MSBCTL reclaim {+1})+reload($LIST)" \
+	--bind="t:execute($MSBCTL shell {1})+reload($LIST)" \
+	--bind="e:execute($MSBCTL edit {1})+reload($LIST)" \
+	--bind="n:execute($MSBCTL add)+reload($LIST)" \
+	--bind="enter:execute-silent($MSBCTL code {1})" \
+	--bind="q:abort" \
+	--bind="esc:abort" \
+	< <($LIST)

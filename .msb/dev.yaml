@@ -1,0 +1,50 @@
+# .msb/dev.yaml — the msb config for this project's sandbox. COMMIT THIS FILE.
+#
+# Passed to msb with --conf by msbctl. Holds only what is the same on any
+# machine that clones this repo. Three kinds of thing are deliberately absent
+# and belong elsewhere:
+#
+#   host paths            they resolve against THIS FILE rather than the
+#                         working directory, so msbctl passes absolute paths
+#                         on the command line instead
+#   machine-local values  $SSH_AUTH_SOCK and friends — the launcher's job
+#   CLI-only settings     --root-disk, --tls-intercept, --net-rule, --secret
+#                         have no config-file equivalent
+#
+# Top-level keys are validated strictly: an unknown one is rejected with the
+# full accepted list. So if this file loads, every key in it is real.
+
+# Pinned tag@digest: a tag moves, a digest does not. `msbctl add` resolves
+# the digest for a tag, and `msbctl show` reports when a newer one exists.
+# yamllint disable-line rule:line-length
+image: mcr.microsoft.com/devcontainers/base:ubuntu@sha256:edfb983aab9c579a385dc23c57d7d3703f5ec920124d99c16204a2cac465aab4
+
+cpus: 4
+# A ceiling, not a reservation: ~300 MB idle. Page cache does park against it
+# and is never returned on its own — `msbctl reclaim sandbox-manager` is the fix.
+memory: "8G"
+
+workdir: /work
+
+# env: project-specific variables only.
+#
+# The telemetry and feedback opt-outs are NOT here: they are machine-wide, in
+# ~/.config/msb/config.toml's [env] table, and msbctl emits them as --env for
+# every sandbox. Keep them out of this file. Setting a key in both places makes
+# its effective value depend on whether --env or --conf wins, which is
+# unverified — and an opt-out that might not apply is worse than no opt-out,
+# because it reads as settled.
+#
+# A key only this project needs goes in [env] in ./sandbox.toml, which merges
+# over the machine-wide set rather than replacing it.
+
+# Deliberately absent, each for a specific reason:
+#
+#   mounts      host paths resolve against this file, not the cwd. msbctl
+#               passes --mount-dir with absolute paths.
+#   network     the rules are verified as CLI flags; the nested YAML shape is
+#               not. They live in .msb/sandbox.toml and msbctl emits
+#               --net-rule. Egress policy must not be subtly wrong.
+#   secrets     bound by msbctl from ~/.config/msb/secrets/, so that no file
+#               in this repo ever references a credential by value or by path.
+#   root_disk   not a config field at all; --root-disk is CLI-only.

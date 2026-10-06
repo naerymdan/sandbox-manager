@@ -1,0 +1,88 @@
+# config.toml — YOUR machine-local overrides for msbctl.
+#
+# Written once by install.sh and never overwritten. It holds only what differs
+# from msb-manager's own defaults, which live in the repo (defaults.toml) and
+# update with `git pull`. Everything here wins over those defaults; tables merge
+# key by key and anything else is replaced whole. `msbctl config` shows the
+# merged result and which side each value came from.
+#
+# Keep this file short. A value copied here from defaults.toml stops following
+# the shipped one, which is the opposite of what you usually want.
+
+# Uncomment what you want to change. Each key is documented in defaults.toml.
+#
+# [defaults]
+# workspaces = "~/workspaces"
+# identity   = "personal"             # a name from [identities] below
+# rule_groups = ["github", "claude"]  # groups a new sandbox starts with
+# cpus   = 4
+# memory = "8G"
+
+# ---------------------------------------------------------------------------
+# Git identities
+#
+# `msbctl add` offers these by name and records the choice; every start applies
+# it inside the guest with `git config --system`.
+#
+# WHAT THIS DOES NOT DO. --system is the LOWEST of git's three layers, which is
+# deliberate. A repo's own .git/config wins, and so does a ~/.gitconfig in the
+# guest. So for a checkout that already carries an identity this changes
+# nothing.
+#
+# What it fixes is the opposite case, and it is a real one: a repo with no
+# identity of its own silently inherits your host-global config when you work
+# on the host. There is no host-global config inside a microVM, so without this
+# `git commit` fails with "Please tell me who you are".
+#
+# It is NEVER written into /work/.git/config. That file is on the host and
+# shared with every other tool; a sandbox rewriting your repo's author behind
+# your back is a worse failure than the one above.
+#
+# CHOOSING BETWEEN IDENTITIES IS A PUBLISHING DECISION, not a preference. A
+# GitHub noreply address still attributes commits to your account and keeps the
+# contribution graph working, while leaking neither a real name nor a real
+# address — worth preferring for anything that can reach a public repo. Find
+# yours at https://github.com/settings/emails
+#
+# [identities.personal]
+# name  = "Your Name"
+# email = "you@example.com"
+#
+# [identities.public]
+# name  = "yourhandle"
+# email = "12345+yourhandle@users.noreply.github.com"
+[identities]
+
+# The same rule applies to egress groups: add your own under [rules], or redefine
+# a shipped one to replace it.
+[rules]
+
+# ---------------------------------------------------------------------------
+# Your own groups go here. Two patterns worth copying, both commented out
+# because the addresses have to be yours.
+#
+# BY ADDRESS AND PORT. The grammar is per-port, so a service on :22 can be
+# allowed while everything else on the same host stays denied. Never widen one
+# of these to a CIDR — the per-port precision is the entire value.
+#
+#   my-servers = [
+#       "allow@10.0.0.10:tcp:22",
+#       "allow@10.0.0.11:tcp:22",
+#   ]
+#
+# BY NAME OVER HTTPS. Matches on the SNI, so a name is allowed while the same
+# host's address is not — the two stay separate, which is usually what you
+# want. Both forms, because a suffix does not cover the apex.
+#
+#   my-services = [
+#       "allow@*.example.com:tcp:443",
+#       "allow@example.com:tcp:443",
+#   ]
+#
+# IF THOSE NAMES RESOLVE TO PRIVATE ADDRESSES — a split-horizon or public
+# record pointing inside your LAN — the project also needs
+# `allow_private_dns = true` in its .msb/sandbox.toml. msb drops such answers
+# as DNS-rebind protection, and the failure is badly disguised: NXDOMAIN inside
+# the guest AND a refused connection, which looks exactly like a missing rule.
+# spikes/10-private-dns.sh demonstrates it.
+# ---------------------------------------------------------------------------

@@ -1,0 +1,152 @@
+# .msb/sandbox.toml — this project's sandbox policy.
+#
+# Read by msbctl. It holds everything about
+# this project's sandbox that is true on any machine, and nothing that is true
+# only on one — no host paths, no tokens, no sandbox name. Those live in
+# ~/.config/msb/sandboxes/<name>.toml, which is never committed.
+#
+# COMMIT THIS FILE IF IT IS INSIDE THE REPO. It is, when the project directory
+# is the checkout itself; then this travels with every clone, which is the
+# point. It is NOT, when the project directory merely contains the checkout as
+# a subfolder — `msbctl add` produces that layout when it clones for you. There
+# this file is machine-local by position, and a fresh clone elsewhere will not
+# have it. Neither layout is wrong; know which one you are in.
+#
+# Why this is not inside .msb/dev.yaml: that file is handed to msb with
+# --conf, and the keys below are ones msb only accepts as CLI flags.
+#
+# Egress rules in particular stay here rather than in dev.yaml's `network:`
+# block, whose nested YAML shape is unverified. An egress policy that is
+# silently wrong is the single failure this design cannot absorb, so the
+# manager emits verified --net-rule flags from this list instead.
+
+# ------------------------------------------------------------------- egress
+#
+# Named groups from ~/.config/msb/config.toml. `base` — DNS, the :80 deny,
+# the Anthropic endpoints and the Ubuntu mirrors — is always applied first and
+# listed. Order matters: rules are first-match-wins.
+#
+# Available groups: `msbctl config` lists them (rules.*) — the ones msb-manager
+# ships and any of your own.
+rule_groups = [
+    "claude",
+    "containers",
+    "github",
+    "npm",
+]
+
+# Allow DNS answers that resolve to private (RFC1918) addresses.
+#
+# REQUIRED by any group listed in `private_dns_groups` (`msbctl setup` sets that
+# up) and anything else reached by a name that points inside the LAN. A homelab
+# often publishes private addresses in PUBLIC DNS — a name like git.example.com
+# can be a real public record pointing at 192.168.x.x — and msb drops such
+# answers by default as DNS-rebind protection.
+#
+# The failure without it is badly disguised: the name comes back NXDOMAIN
+# inside the guest, and msb never learns which address belongs to the allowed
+# name, so it also refuses the TCP connection. It looks exactly like a missing
+# egress rule, and `curl --resolve` does not work around it either.
+#
+# What it costs: on ports other than :443 a hostname rule is enforced as "the
+# addresses this name resolved to", so shaped DNS answers could repoint such a
+# rule at an internal address. On :443 the SNI is checked and this does not
+# apply. Deny-by-default is unaffected either way — this widens what a name may
+# resolve to, never what is reachable without a rule.
+allow_private_dns = false
+
+# One-off hosts this project needs and no other does. Grammar:
+#
+#   "<action>[:<direction>]@<target>[:<proto>[:<ports>]]"
+#
+# Prefer HTTPS so the rule means what it says. Add entries from denials you
+# actually hit, not from guesses — the bootstrap reports every failure at once
+# so one round trip fixes all of them.
+#
+# These are emitted LAST, after `base` and after every group above. Rules are
+# first-match-wins, so nothing here can override a deny in `base` — in
+# particular a plaintext :80 allow belongs in config.toml, not here. Try the
+# https:// URL first; that is almost always the actual fix.
+extra_rules = []
+
+# ---------------------------------------------------------------- resources
+#
+# Omit any of these to take the default from config.toml (4 cpus, 8G memory,
+# 16G root disk). Memory is a ceiling, not a reservation.
+#
+# cpus      = 4
+# memory    = "8G"
+# root_disk = "16G"
+#
+# A dedicated disk for /var/lib/containers, for projects that run podman. The
+# root is an overlayfs and podman's overlay driver cannot sit on it, so without
+# this it falls back to vfs (slow, ~3x the disk). Fixed at create time.
+containers_disk = "20G"
+
+# ----------------------------------------------------------------- identity
+#
+# Which [identities] entry from ~/.config/msb/config.toml this project commits
+# as, overriding the machine-wide default. The registry entry overrides this in
+# turn, so a machine can still differ.
+#
+# Committed, so it travels with the repo — which is the point for a project
+# that must always be authored one way. A public repo or anything that gets
+# forked should pin the GitHub noreply identity here rather than rely on
+# whoever clones it having the right default.
+#
+# Names an identity, never an address: the actual name and email live in
+# config.toml and are not committed anywhere.
+#
+# identity = "github"
+
+# -------------------------------------------------------------- environment
+#
+# Variables only THIS project needs. These MERGE over the machine-wide [env]
+# table in ~/.config/msb/config.toml rather than replacing it, so the telemetry
+# and feedback opt-outs stay in force and do not need repeating here.
+#
+# Do not set a key here that ./dev.yaml also sets in its `env:` block: which of
+# --env and --conf wins is unverified.
+#
+# Fixed at create time, like mounts and egress rules — `msbctl rebuild` to
+# change one.
+#
+# [env]
+# SOME_PROJECT_FLAG = "1"
+
+# ---------------------------------------------------------------- bootstrap
+[bootstrap]
+# Extra apt packages, on top of the always-installed set: socat, jq, curl,
+# ca-certificates, ripgrep, fd-find (as `fd`), tree, unzip, file, yamllint,
+# shellcheck.
+packages = [
+    "podman",
+    "nftables",
+]
+
+# bun and gitleaks are off by default — nothing currently needs them.
+bun = false
+gitleaks = false
+claude = true
+
+# Run after everything else, inside the guest, with the repo at /work. Use it
+# for `npm ci`-type project setup. Failures are reported, not fatal.
+# script = "scripts/sandbox-setup.sh"
+
+# ------------------------------------------------------------------ secrets
+[secrets]
+# Bind this project's fine-grained PAT as --secret GH_TOKEN@github.com,api.github.com.
+# The value is read from ~/.config/msb/secrets/<name>.env at every start and
+# never enters the guest: msb puts a placeholder in the environment and
+# substitutes the real value host-side, into request HEADERS only, on egress to
+# those two hosts.
+#
+# Consequence worth knowing: `curl -H "Authorization: Bearer $GH_TOKEN"` works.
+# So does `https://x:$GH_TOKEN@github.com/…`, which is NOT a counterexample —
+# curl converts userinfo into an Authorization header before sending. What is
+# genuinely outside the headers is a query string or a request body, and there
+# the placeholder is simply not substituted.
+#
+# `git push` is unaffected either way when origin is an SSH remote — that goes
+# through the forwarded agent, not through this binding.
+github = true
