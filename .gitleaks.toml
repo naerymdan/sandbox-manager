@@ -1,0 +1,7 @@
+# Extends gitleaks' default rules; adds only the allowlist below.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "NodeSource's public apt signing-key fingerprint, pinned in bootstrap.sh. A fingerprint is a hash of a public key, not a credential; flagged as generic-api-key on entropy alone."
+regexes = ['''6F71F525282841EEDAF851B42F59B5F99B1BE0B4''']
