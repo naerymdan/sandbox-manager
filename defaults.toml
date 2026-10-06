@@ -213,6 +213,9 @@ github = [
     # come through it.
     "allow@release-assets.githubusercontent.com:tcp:443",
     "allow@raw.githubusercontent.com:tcp:443",
+    # Where `gh run view --log` / `--log-failed` fetch Actions logs from; without
+    # it they fail with "connection refused" and CI failures can't be read here.
+    "allow@results-receiver.actions.githubusercontent.com:tcp:443",
 ]
 
 npm = [

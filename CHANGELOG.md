@@ -9,6 +9,7 @@ release notes.
 ## [Unreleased]
 
 ### Changed
+- The `github` rule group now allows `results-receiver.actions.githubusercontent.com`, so `gh run view --log` can read Actions logs from a sandbox; needs a rebuild.
 - bun and node are now installed from verified sources: bun is a pinned (`[versions] bun`, default 1.4.2) GitHub release checked against its published checksums, node from NodeSource's apt repository with a pinned signing-key fingerprint, instead of `curl | bash`; the `bun` rule group now allows `github.com` rather than `bun.sh`, `msbctl update -c bun` bumps the pin, and an existing sandbox picks this up at its next rebuild.
 - The Claude egress hosts (`api.anthropic.com`, `platform.claude.com`) now come only from the `claude` rule group, no longer from `base`; a sandbox whose `rule_groups` omits `claude` loses Claude access at its next rebuild.
 
