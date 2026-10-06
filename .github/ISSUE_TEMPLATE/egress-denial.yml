@@ -1,0 +1,56 @@
+name: Egress denial
+description: Something a sandbox needs was refused. The allowlist is built from these.
+labels: [egress]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Egress is deny-by-default on purpose, so a refusal is policy before it is a bug.
+        msb does not log denials, so what you saw fail is the evidence. Report the
+        exact host and port; do not guess at a wider rule.
+  - type: input
+    id: host
+    attributes:
+      label: Host
+      description: Exact hostname, not a domain pattern.
+      placeholder: registry.example.com
+    validations:
+      required: true
+  - type: input
+    id: port
+    attributes:
+      label: Port and protocol
+      placeholder: "443/tcp"
+    validations:
+      required: true
+  - type: textarea
+    id: failure
+    attributes:
+      label: What failed
+      description: The command that ran and the error it printed.
+      render: shell
+    validations:
+      required: true
+  - type: input
+    id: why
+    attributes:
+      label: What needs it
+      description: Which tool or feature, e.g. "npm install", "claude startup", "go modules".
+    validations:
+      required: true
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Who needs it
+      description: Whether this belongs in a shared rule group in defaults.toml or in one project's .msb/sandbox.toml.
+      options:
+        - Every sandbox using this tool (a rule group in defaults.toml)
+        - Only my project (its .msb/sandbox.toml)
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Versions
+      description: Output of `msbctl --version` and `msb --version`.

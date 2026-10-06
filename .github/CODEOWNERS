@@ -1,0 +1,11 @@
+# Owner review for the files that decide what a sandbox can reach or hold, and
+# for the files that ship to users. Everything else needs no named reviewer.
+# (GitHub only enforces this once branch protection requires code-owner review.)
+
+defaults.toml        @naerymdan
+profile/             @naerymdan
+bootstrap.sh         @naerymdan
+install.sh           @naerymdan
+get.sh               @naerymdan
+scripts/package.sh   @naerymdan
+.github/             @naerymdan

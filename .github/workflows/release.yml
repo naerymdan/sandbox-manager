@@ -1,0 +1,56 @@
+name: release
+
+# Pushing a tag vX.Y.Z publishes that release. What gets published is exactly
+# what `scripts/package.sh` builds (tarball, repo-bound get.sh, checksums), which
+# is what `get.sh` and `msbctl self-update` download.
+#
+# To cut a release: move the Unreleased entries in CHANGELOG.md under a new
+# `## [X.Y.Z] - YYYY-MM-DD` heading, set VERSION to X.Y.Z, merge that, then
+#
+#   git tag vX.Y.Z && git push origin vX.Y.Z
+#
+# The job refuses to publish if the tag, VERSION and CHANGELOG disagree, so a
+# half-done release fails here instead of reaching users.
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+permissions:
+  contents: write # create the release and upload its assets; nothing else
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Tag, VERSION and CHANGELOG must agree
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if [ "$version" != "$(tr -d '[:space:]' < VERSION)" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match VERSION ($(cat VERSION))"; exit 1
+          fi
+          # The section between this version's heading and the next one.
+          awk -v v="$version" '/^## \[/ { p = (index($0, "[" v "]") == 4); next } p' CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          if ! grep -q '[^[:space:]]' "$RUNNER_TEMP/notes.md"; then
+            echo "::error::CHANGELOG.md has no entries under ## [$version]"; exit 1
+          fi
+
+      - name: Static checks
+        run: scripts/check.sh
+
+      - name: Package and install into a throwaway HOME
+        run: scripts/smoke-install.sh
+
+      - name: Build assets
+        run: scripts/package.sh --repo "$GITHUB_REPOSITORY" --out "$RUNNER_TEMP/dist"
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "$RUNNER_TEMP"/dist/* \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            --verify-tag
