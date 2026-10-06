@@ -9,13 +9,21 @@
 # published with it, and runs the installer inside it. Nothing is installed if the
 # checksum does not match.
 #
-# Needs: curl, tar, sha256sum (or shasum), bash. The installer then checks for
+# The checksum only catches a damaged download: whoever can replace the tarball
+# can replace checksums.sha256 beside it. So when an authenticated `gh` is on
+# PATH, the tarball's build provenance (a Sigstore-signed attestation made by this
+# repository's release workflow) is verified too, and a failure installs nothing.
+# Without `gh` the checksum is all that was checked, and the output says so.
+#
+# Needs: curl, tar, sha256sum (or shasum), bash. Optional: gh (provenance). The installer then checks for
 # python3 3.11+, git, and msb itself, and says what is missing.
 #
 # For testing and mirrors:
 #   MSB_MANAGER_REPO=owner/name       use a different repository
 #   MSB_MANAGER_BASE_URL=URL          fetch assets from URL/<file> instead of GitHub
-#                                     releases (file:// works); needs --version
+#                                     releases (file:// works); needs --version.
+#                                     A mirror is not attested, so provenance is skipped.
+#   MSB_MANAGER_SKIP_ATTEST=1         skip the provenance check even if gh is there
 set -eu
 
 # Filled in when this file is attached to a release by scripts/package.sh. In a
@@ -122,6 +130,29 @@ verify() {   # verify <file> <checksums-file>
     fi
 }
 
+# Provenance: the tarball must have been built by this repository's release
+# workflow. Fails closed when gh can check and the check fails; degrades to a
+# warning when it cannot be asked (no gh, not logged in, a mirror, or opted out).
+verify_provenance() {   # verify_provenance <file>
+    _file="$1"
+    if [ -n "${MSB_MANAGER_BASE_URL:-}" ]; then
+        warn "provenance not checked: assets came from MSB_MANAGER_BASE_URL, not a GitHub release"; return 0
+    fi
+    if [ "${MSB_MANAGER_SKIP_ATTEST:-}" = 1 ]; then
+        warn "provenance not checked: MSB_MANAGER_SKIP_ATTEST=1"; return 0
+    fi
+    if ! command -v gh >/dev/null 2>&1; then
+        warn "provenance not checked (install gh to verify who built this); only the checksum was verified"; return 0
+    fi
+    if ! gh auth status >/dev/null 2>&1; then
+        warn "provenance not checked (gh is not logged in); only the checksum was verified"; return 0
+    fi
+    gh attestation verify "$_file" --repo "$GITHUB_REPO" \
+        --signer-workflow "${GITHUB_REPO}/.github/workflows/release.yml" >/dev/null 2>&1 \
+        || error "provenance verification FAILED for ${_file}: it was not built by ${GITHUB_REPO}'s release workflow — nothing was installed (MSB_MANAGER_SKIP_ATTEST=1 to override)"
+    success "Provenance verified (built by ${GITHUB_REPO}'s release workflow)"
+}
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -162,6 +193,7 @@ main() {
     info "Verifying checksum..."
     ( cd "$_tmp" && verify "$_bundle" checksums.sha256 )
     success "Checksum verified"
+    verify_provenance "${_tmp}/${_bundle}"
 
     info "Extracting..."
     tar -xzf "${_tmp}/${_bundle}" -C "$_tmp"
