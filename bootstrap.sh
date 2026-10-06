@@ -10,6 +10,7 @@
 #   MSB_NODE_MAJOR        node major line                      (default 22)
 #   MSB_GITLEAKS_VERSION  pinned
 #   MSB_GH_VERSION        pinned; checksum-verified below
+#   MSB_BUN_VERSION       pinned; checksum-verified below
 #   MSB_EXTRA_PACKAGES    space-separated apt packages for this project
 #   MSB_WANT_CLAUDE       1 to install Claude Code (default 1)
 #   MSB_WANT_BUN          1 to install bun
@@ -31,6 +32,7 @@ set -uo pipefail
 NODE_MAJOR="${MSB_NODE_MAJOR:-22}"
 GITLEAKS_VERSION="${MSB_GITLEAKS_VERSION:-8.30.1}"
 GH_VERSION="${MSB_GH_VERSION:-2.102.0}"
+BUN_VERSION="${MSB_BUN_VERSION:-1.4.2}"
 EXTRA_PACKAGES="${MSB_EXTRA_PACKAGES:-}"
 WANT_CLAUDE="${MSB_WANT_CLAUDE:-1}"
 WANT_BUN="${MSB_WANT_BUN:-0}"
@@ -105,7 +107,7 @@ do_apt() {
 	# shellcheck disable=SC2086 # deliberate word splitting: a package list
 	apt-get install -y -qq --no-install-recommends \
 		socat jq curl ca-certificates ripgrep fd-find tree unzip file \
-		yamllint shellcheck $EXTRA_PACKAGES
+		yamllint shellcheck gnupg $EXTRA_PACKAGES
 	command -v socat >/dev/null   # no socat, no agent bridge
 	# Debian/Ubuntu name the binary fdfind to avoid a clash; everyone else's
 	# docs and muscle memory say fd.
@@ -114,10 +116,34 @@ do_apt() {
 	fi
 }
 
+# The key NodeSource signs its apt repository with. Pinned, so that what the
+# download is checked against is not the download itself: the key file is
+# imported, ONLY this fingerprint is exported into the keyring apt trusts, and
+# the step fails if it is absent. Everything after that is apt verifying
+# signatures, which is why the major line is the only pin node needs. A key
+# rotation fails loudly here; update the fingerprint from nodesource.com.
+NODESOURCE_KEY_FPR="6F71F525282841EEDAF851B42F59B5F99B1BE0B4"
+
 do_node() {
 	command -v node >/dev/null && { node --version; return 0; }
-	curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash - || return 1
-	apt-get install -y -qq nodejs || return 1
+	# Not NodeSource's setup_N.x script: that is an unverified `curl | bash`
+	# which does exactly the following, minus the fingerprint check (same file
+	# names too, so a guest set up either way ends up the same).
+	local keyring=/usr/share/keyrings/nodesource.gpg tmp rc
+	tmp="$(mktemp -d)"
+	chmod 700 "$tmp"
+	curl -fsSL -o "$tmp/key.asc" https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+		&& GNUPGHOME="$tmp" gpg --batch -q --import "$tmp/key.asc" \
+		&& GNUPGHOME="$tmp" gpg --batch --export "$NODESOURCE_KEY_FPR" >"$tmp/key.gpg" \
+		&& [ -s "$tmp/key.gpg" ] \
+		&& install -m 644 "$tmp/key.gpg" "$keyring" \
+		&& printf 'Types: deb\nURIs: https://deb.nodesource.com/node_%s.x\nSuites: nodistro\nComponents: main\nSigned-By: %s\n' \
+			"$NODE_MAJOR" "$keyring" >/etc/apt/sources.list.d/nodesource.sources \
+		&& apt-get update -qq \
+		&& apt-get install -y -qq nodejs
+	rc=$?
+	rm -rf "$tmp"
+	[ "$rc" -eq 0 ] || return 1
 	node --version
 }
 
@@ -145,9 +171,25 @@ do_claude() {
 
 do_bun() {
 	command -v bun >/dev/null && { bun --version; return 0; }
-	curl -fsSL https://bun.sh/install | bash || return 1
-	ln -sf "$HOME/.bun/bin/bun" /usr/local/bin/bun
-	bun --version
+	local arch base zip tmp rc
+	case "$(uname -m)" in
+		x86_64)        arch=x64 ;;
+		aarch64|arm64) arch=aarch64 ;;
+		*) echo "   unsupported arch $(uname -m) for bun" >&2; return 1 ;;
+	esac
+	# A pinned release asset checked against the SHASUMS256.txt published beside
+	# it, not bun.sh/install (an unverified script that fetches "latest").
+	base="https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}"
+	zip="bun-linux-${arch}.zip"
+	tmp="$(mktemp -d)"
+	curl -fsSL -o "$tmp/$zip" "$base/$zip" \
+		&& curl -fsSL -o "$tmp/sums" "$base/SHASUMS256.txt" \
+		&& (cd "$tmp" && grep " $zip\$" sums | sha256sum -c --quiet) \
+		&& unzip -q "$tmp/$zip" -d "$tmp" \
+		&& install "$tmp/bun-linux-${arch}/bun" /usr/local/bin/bun
+	rc=$?
+	rm -rf "$tmp"
+	[ "$rc" -eq 0 ] && bun --version
 }
 
 do_gitleaks() {
@@ -275,7 +317,7 @@ fi
 # placeholder is what gh sends and the interceptor swaps it.
 step optional "gh ${GH_VERSION}" -- do_gh
 
-[ "$WANT_BUN" = 1 ] && step optional "bun" -- do_bun
+[ "$WANT_BUN" = 1 ] && step optional "bun ${BUN_VERSION}" -- do_bun
 
 [ "$WANT_GITLEAKS" = 1 ] && step optional "gitleaks ${GITLEAKS_VERSION}" -- do_gitleaks
 

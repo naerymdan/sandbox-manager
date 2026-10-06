@@ -135,6 +135,7 @@ DO_NOT_TRACK = "1"
 node     = "22"
 gitleaks = "8.30.1"
 gh       = "2.102.0"
+bun      = "1.4.2"
 
 [version_check]
 # Unauthenticated api.github.com is 60 requests/hour per IP and this probes
@@ -219,7 +220,14 @@ npm = [
     "allow@deb.nodesource.com:tcp:443",
 ]
 
-bun = ["allow@bun.sh:tcp:443"]
+# bun comes from a pinned, checksum-verified GitHub release asset (the same as
+# gh and gitleaks), not bun.sh. Release downloads redirect to
+# release-assets.githubusercontent.com. Listed here rather than relying on the
+# `github` group so a sandbox with bun and no other GitHub need still works.
+bun = [
+    "allow@github.com:tcp:443",
+    "allow@release-assets.githubusercontent.com:tcp:443",
+]
 
 # Claude Code contacts BOTH. api.anthropic.com carries inference;
 # platform.claude.com is hit on startup, and without it the CLI refuses to
