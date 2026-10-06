@@ -8,19 +8,32 @@ release notes.
 
 ## [Unreleased]
 
-### Changed
-- The `github` rule group now allows `results-receiver.actions.githubusercontent.com`, so `gh run view --log` can read Actions logs from a sandbox; needs a rebuild.
-- bun and node are now installed from verified sources: bun is a pinned (`[versions] bun`, default 1.4.2) GitHub release checked against its published checksums, node from NodeSource's apt repository with a pinned signing-key fingerprint, instead of `curl | bash`; the `bun` rule group now allows `github.com` rather than `bun.sh`, `msbctl update -c bun` bumps the pin, and an existing sandbox picks this up at its next rebuild.
-- The Claude egress hosts (`api.anthropic.com`, `platform.claude.com`) now come only from the `claude` rule group, no longer from `base`; a sandbox whose `rule_groups` omits `claude` loses Claude access at its next rebuild.
+## [0.1.0] - 2026-10-06
 
-### Fixed
-- Secret placeholders no longer kill a coding agent's own API requests: every binding now passes the placeholder through to `api.anthropic.com` and `platform.claude.com`, so an agent that has once read `$MSB_GH_TOKEN` stops getting `ECONNRESET` on every later turn; needs a rebuild. The real token is unaffected — it still only goes into headers, for its own hosts.
-- `msbctl observe <name>` reports requests msb blocked over the secret policy, which are invisible from inside the guest and look exactly like a missing egress rule.
-- `install.sh --dev` no longer sets the executable bit on `bootstrap.sh`, which is committed as 644 and showed up as modified after every dev install.
+First release. msb-manager runs coding agents against real repositories in
+[microsandbox](https://github.com/microsandbox/microsandbox) microVMs, without
+giving them your network or your tokens.
 
-### Added
-- Each release's tarball and `get.sh` carry a signed build-provenance attestation; `get.sh` and `msbctl self-update` verify it when an authenticated `gh` is installed (`MSB_MANAGER_SKIP_ATTEST=1` skips it) and otherwise say only the checksum was checked.
-- `egress_mode = "observe"` per sandbox (`msbctl observe <name> on`, or `msbctl edit`): stops blocking egress entirely and records every host reached, for when the allowlist is too tight to work in; needs a rebuild, and leaves that sandbox with unrestricted egress until you switch back.
-- `msbctl observe <name>` lists the hosts a sandbox actually reached, flags the ones no rule covers and prints the `msbctl allow` line for them.
-- `scripts/check.sh` (static checks, run by CI) and `scripts/smoke-install.sh` (package, then install into a throwaway HOME).
-- CI, a tag-driven release workflow, Dependabot for Actions, issue forms, a PR template, `CODEOWNERS` and `SECURITY.md`.
+### Isolation
+- **Deny-by-default egress**, per host and per port. Named rule groups (`github`, `npm`, `python`, `go`, `claude`, `bun`, …) compose per project, and plain HTTP is refused outright.
+- **Tokens never enter the VM.** `--secret` bindings put an opaque placeholder in the guest and substitute the real value host-side, into request headers only, for the hosts you name. `GH_TOKEN` and Claude's own credential work this way, and `msbctl secret` adds more.
+- **A filtered SSH agent** per sandbox, forwarded over vsock: only identity-list and sign requests, limited to the keys you pick (`msbctl keys`). The private key never crosses.
+- **A central `CLAUDE.md`** (shipped text plus your own additions) copied into every sandbox on each start from a read-only mount; each sandbox gets its own `~/.claude`.
+
+### Managing sandboxes
+- **One CLI and an fzf picker** (with a desktop entry) to register, start, stop, rebuild, purge, resize, shell into and run commands in sandboxes: `msbctl add`, `start`, `stop`, `rebuild`, `purge`, `shell`, `exec`, `resize`, `reclaim`, `ls`, `status`, `show`.
+- **A setup wizard** that asks for features (bun, python, podman, gitleaks, …) rather than raw rule groups, preselects them from your repo's languages, and sizes the disks and package caches; `msbctl edit` and `msbctl setup` revisit any section later, and a first-run walk-through covers a new machine.
+- **Per-project config that travels with the repo** (`.msb/sandbox.toml`, egress groups, packages, limits), with machine-local paths and tokens kept in `~/.config/msb/` and never committed. `msbctl config` shows the merged result and where each value came from.
+- **Extra folders, package-cache disks and secrets** added after the fact (`msbctl mount`, `cache`, `secret`), and `msbctl allow` for one more egress rule.
+- **Egress observe mode** (`msbctl observe <name> on`): when an allowlist is too tight to work in, stop blocking, record every host reached, then read it back with the exact `msbctl allow` lines for the hosts no rule covers. It leaves that sandbox's egress unrestricted until you switch it off.
+- **Secret placeholders pass through to agent hosts**, so a coding agent that has read `$MSB_GH_TOKEN` no longer breaks its own API calls.
+- **In-place updates** of claude, gh, gitleaks, bun and apt (`msbctl update`), with the versions recorded so a rebuild reproduces them, and a version display in the picker.
+
+### Install and supply chain
+- **`curl | sh` installer** (`get.sh`) and `msbctl self-update`, with sha256 verification of the release tarball.
+- **Signed build-provenance attestations** on every release tarball and `get.sh`, verified by `get.sh` and `self-update` when an authenticated `gh` is installed (`MSB_MANAGER_SKIP_ATTEST=1` skips it; otherwise only the checksum is checked). See the README's "Verifying a release".
+- **Verified toolchain installs inside the guest**: bun and gh are pinned release assets checked against their published checksums, and node comes from NodeSource's apt repository with a pinned signing-key fingerprint, instead of `curl | bash`.
+- **CI, CodeQL, zizmor and OpenSSF Scorecard**, a tag-driven release workflow, Dependabot, issue forms, a security policy and a contributing guide.
+
+### Upgrading from a checkout
+- Rule groups changed: the Claude hosts now come only from the `claude` group, `bun` allows `github.com` instead of `bun.sh`, and `github` allows the Actions log host. Existing sandboxes pick these up, along with the secret pass-through and the new installers, at their next `msbctl rebuild`.
