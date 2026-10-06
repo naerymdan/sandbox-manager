@@ -1,0 +1,17 @@
+[Desktop Entry]
+Type=Application
+Name=Sandboxes
+GenericName=Agent sandbox manager
+Comment=Start, stop, rebuild and update the registered microsandbox dev environments
+# konsole is the Plasma default. install.sh rewrites the Exec line with the
+# absolute ~/.local/bin path and substitutes the terminal if konsole is absent.
+#
+# --hold is deliberately NOT set: the picker handles its own error cases with a
+# "press Enter to close" so that a missing dependency is readable, and holding
+# every normal exit would leave dead windows behind.
+Exec=konsole --separate -e msb-picker
+Icon=computer
+Terminal=false
+Categories=Development;System;
+Keywords=sandbox;microsandbox;msb;claude;agent;
+StartupNotify=true

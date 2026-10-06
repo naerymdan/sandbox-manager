@@ -1,0 +1,77 @@
+# {{NAME}} — registry entry, written by `msbctl add` on {{DATE}}.
+#
+# Machine-local. Lives in ~/.config/msb/sandboxes/ and is never committed:
+# it holds an absolute host path, which is exactly the thing that must not end
+# up in a repo.
+#
+# Hand-editable. msbctl only ever reads this with tomllib; the one exception is
+# the [versions] table, which `msbctl update` rewrites — see below.
+#
+# Anything portable (egress groups, bootstrap extras, resources) belongs in
+# {{PROJECT}}/.msb/sandbox.toml instead, so it travels with the repo. The keys
+# here override that file when both set the same thing.
+
+name    = "{{NAME}}"
+project = "{{PROJECT}}"
+
+# owner/name, used for the PAT binding and shown in the picker. Empty if the
+# project has no GitHub remote.
+repo = "{{REPO}}"
+
+# Git identity, by name from config.toml's [identities]. Applied inside the
+# guest with `git config --system` on every start, so changing it here takes
+# effect on the next start rather than needing a rebuild.
+#
+# --system is the LOWEST of git's three layers: this repo's own .git/config,
+# and a ~/.gitconfig in the guest, both still win. It is the fallback that stops
+# `git commit` failing with "Please tell me who you are" in a repo that carries
+# no identity of its own. Empty for none.
+identity = "{{IDENTITY}}"
+
+# Started by the picker's "start autostart set" action. Each idle sandbox costs
+# ~300 MB, so this is cheap, but a stopped sandbox cannot be version-probed.
+autostart = {{AUTOSTART}}
+
+# --------------------------------------------------------------- ssh keys
+#
+# Which keys in your host ssh-agent this sandbox can see and sign with, by
+# fingerprint — for git over ssh, and for signing commits. The keys never enter
+# the VM; the sandbox talks to a per-sandbox filter in front of your agent.
+#
+# Edit with `msbctl keys {{NAME}}`; it takes effect immediately. Absent means
+# every key (what entries from before this existed get); [] means none.
+{{SSH_KEYS}}
+
+# ------------------------------------------------------------ extra folders
+#
+# Other host folders mounted into the sandbox, as "HOST[:GUEST][:ro|rw]" — the
+# guest path defaults to /mnt/<name> and the mode to ro. Read-write writes land
+# in the host folder as you. Host paths are why this lives here and not in the
+# project. Fixed at create time: `msbctl mount {{NAME}} ...` adds one, then
+# `msbctl rebuild {{NAME}}` applies it.
+{{MOUNTS}}
+
+# ---------------------------------------------------------------- overrides
+#
+# Every key below is optional. Omit one and the value comes from
+# {{PROJECT}}/.msb/sandbox.toml, then from ~/.config/msb/config.toml.
+#
+# Uncomment to pin this sandbox to something different from the defaults:
+#
+# image       = "mcr.microsoft.com/devcontainers/base:ubuntu@sha256:..."
+# cpus        = 8
+# memory      = "16G"
+# root_disk   = "32G"
+# conf        = ".msb/dev.yaml"     # relative to project
+# rule_groups = ["github", "npm", "python"]
+# extra_rules = ["allow@mirror.example.com:tcp:443"]
+
+# ----------------------------------------------------------------- versions
+#
+# WRITTEN BY `msbctl update`, not by hand — though hand-editing is fine.
+#
+# This table exists because updating a component inside a running sandbox
+# diverges from the pins in bootstrap.sh, and the next rebuild would silently
+# revert it. Recording what was installed here makes the rebuild reproduce it.
+# Delete an entry to go back to the default in config.toml.
+[versions]

@@ -1,0 +1,16 @@
+# Nothing in this repo is generated, and nothing machine-local belongs in it.
+# Machine state lives in ~/.config/msb/ and ~/.local/state/msb/ — see README.
+
+*.swp
+*~
+.DS_Store
+__pycache__/
+
+# Belt and braces. Secrets live in ~/.config/msb/secrets/ at 0600 and should
+# never be anywhere near a checkout, but a stray one must not be committable.
+*.env
+!*.env.example
+secrets/
+
+# Release builds from scripts/package.sh.
+dist/
