@@ -7,5 +7,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # Do not propose a version the day it is published: a hijacked action
+    # release is usually caught and pulled within days, and every action here
+    # is pinned by hash, so being a few days late costs nothing.
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "ci"
