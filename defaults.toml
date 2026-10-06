@@ -216,6 +216,9 @@ github = [
     # Where `gh run view --log` / `--log-failed` fetch Actions logs from; without
     # it they fail with "connection refused" and CI failures can't be read here.
     "allow@results-receiver.actions.githubusercontent.com:tcp:443",
+    # Sigstore's TUF trust root, which `gh attestation verify` fetches before it
+    # can check a release's build-provenance attestation.
+    "allow@tuf-repo-cdn.sigstore.dev:tcp:443",
 ]
 
 npm = [
