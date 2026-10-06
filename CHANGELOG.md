@@ -8,10 +8,7 @@ release notes.
 
 ## [Unreleased]
 
-### Changed
-- The `github` rule group now allows `tuf-repo-cdn.sigstore.dev` and `tmaproduction.blob.core.windows.net`, so `gh attestation verify` can run from a sandbox; needs a rebuild.
-
-## [0.1.0] - 2026-10-06
+## [0.1.1] - 2026-10-06
 
 First release. msb-manager runs coding agents against real repositories in
 [microsandbox](https://github.com/microsandbox/microsandbox) microVMs, without
@@ -39,4 +36,4 @@ giving them your network or your tokens.
 - **CI, CodeQL, zizmor and OpenSSF Scorecard**, a tag-driven release workflow, Dependabot, issue forms, a security policy and a contributing guide.
 
 ### Upgrading from a checkout
-- Rule groups changed: the Claude hosts now come only from the `claude` group, `bun` allows `github.com` instead of `bun.sh`, and `github` allows the Actions log host. Existing sandboxes pick these up, along with the secret pass-through and the new installers, at their next `msbctl rebuild`.
+- Rule groups changed: the Claude hosts now come only from the `claude` group, `bun` allows `github.com` instead of `bun.sh`, and `github` allows the Actions log host, Sigstore's trust root and GitHub's attestation storage (so `gh attestation verify` works from a sandbox). Existing sandboxes pick these up, along with the secret pass-through and the new installers, at their next `msbctl rebuild`.
