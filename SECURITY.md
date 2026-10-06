@@ -29,4 +29,5 @@ instead. A reproduction against a throwaway sandbox is ideal.
 
 ## Supported versions
 
-Only the latest release is supported.
+Only the latest release is supported. Release assets carry a build-provenance
+attestation: `gh attestation verify <file> --repo naerymdan/sandbox-manager`.

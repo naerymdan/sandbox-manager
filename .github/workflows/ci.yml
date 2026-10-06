@@ -26,6 +26,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       # Pinned by hash, not just by version: this is a downloaded binary running
       # in CI. Update the version and the hash together (the hash is in the
