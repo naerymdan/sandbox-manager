@@ -44,9 +44,19 @@
 # address — worth preferring for anything that can reach a public repo. Find
 # yours at https://github.com/settings/emails
 #
+# SIGNING. `signing_key` is the PUBLIC half of an ssh key (`msbctl setup` fills
+# it in from the same picker as `msbctl keys`). A sandbox on this identity then
+# sets gpg.format=ssh, user.signingkey and commit/tag signing in the guest's
+# --system git config, and git signs through the filtered ssh-agent: the private
+# key never enters the VM. It is enforced only while the sandbox's key selection
+# includes that key; dropping it in `msbctl keys` turns signing off, with a
+# warning. An allowed-signers file with this key is written too, so `git log
+# --show-signature` verifies what the sandbox signed.
+#
 # [identities.personal]
 # name  = "Your Name"
 # email = "you@example.com"
+# signing_key = "ssh-ed25519 AAAA..."
 #
 # [identities.public]
 # name  = "yourhandle"
