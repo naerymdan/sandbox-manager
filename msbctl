@@ -760,6 +760,24 @@ class Sandbox:
             die(f"identity {self.identity_name!r} is missing: {', '.join(missing)}")
         return ident
 
+    @property
+    def signing_fp(self):
+        """Fingerprint of the key the identity signs commits with, or None."""
+        pub = (self.identity or {}).get("signing_key")
+        parsed = _parse_pub_line(pub) if pub else None
+        return parsed[0] if parsed else None
+
+    @property
+    def signing_active(self):
+        """Signing is enforced only while the sandbox can actually use the key:
+        an identity that names one AND a key selection that includes it (or no
+        selection at all, which shows the whole host agent). Dropping the key
+        in `msbctl keys` therefore turns signing off rather than leaving a
+        sandbox whose every commit fails."""
+        fp = self.signing_fp
+        keys = self.ssh_keys
+        return bool(fp) and (keys is None or fp in keys)
+
     def env_vars(self):
         """Guest environment: config.toml [env] < sandbox.toml [env] < registry.
 
@@ -1046,6 +1064,40 @@ def _parse_pub_line(line):
     return key_fingerprint(blob), parts[0], parts[2] if len(parts) > 2 else ""
 
 
+# Public key lines learned while picking (an encrypted key with no .pub is only
+# readable once its passphrase has been given), by fingerprint.
+_PUB_CACHE = {}
+
+
+def public_line(fp):
+    """`type base64` (no comment) of the key with this fingerprint, from what
+    the agent holds, else a key file in ~/.ssh; None if neither can say. Git
+    needs the public half to name the key it asks the agent to sign with."""
+    def bare(line):
+        parts = line.split()
+        return " ".join(parts[:2]) if len(parts) >= 2 else None
+
+    if fp in _PUB_CACHE:
+        return bare(_PUB_CACHE[fp])
+    proc = subprocess.run(["ssh-add", "-L"], capture_output=True, text=True)
+    for line in proc.stdout.splitlines() if proc.returncode == 0 else []:
+        parsed = _parse_pub_line(line)
+        if parsed and parsed[0] == fp:
+            return bare(line)
+    for found, _, _, path in host_ssh_files():
+        if found != fp:
+            continue
+        if os.path.isfile(path + ".pub"):
+            with open(path + ".pub", encoding="utf-8", errors="replace") as fh:
+                return bare(fh.readline())
+        proc = subprocess.run(["ssh-keygen", "-y", "-P", "", "-f", path],
+                              capture_output=True, text=True,
+                              stdin=subprocess.DEVNULL, timeout=10)
+        if proc.returncode == 0:
+            return bare(proc.stdout)
+    return None
+
+
 def host_agent_keys():
     """The keys the host agent holds, as [(fingerprint, type, comment)]."""
     proc = subprocess.run(["ssh-add", "-L"], capture_output=True, text=True)
@@ -1187,10 +1239,28 @@ def _identify_file(path):
     note(f"{tilde(path)} is encrypted — its passphrase is needed to name it")
     proc = subprocess.run(["ssh-keygen", "-y", "-f", path],
                           stdout=subprocess.PIPE, text=True)
-    return _parse_pub_line(proc.stdout) if proc.returncode == 0 else None
+    parsed = _parse_pub_line(proc.stdout) if proc.returncode == 0 else None
+    if parsed:
+        _PUB_CACHE[parsed[0]] = proc.stdout.strip()
+    return parsed
 
 
-def pick_ssh_keys(current, preselect_all):
+SIGNS_MARK = "  [signs commits]"
+
+
+def pick_ssh_keys(current, preselect_all, signing=None, single=False):
+    # `signing` is the fingerprint an identity signs commits with: that row is
+    # flagged, so unticking it is a visible act (the caller warns). `single`
+    # is for choosing ONE key (an identity's signing key): zero is allowed and
+    # means none, more than one is asked again.
+    chosen = _pick_ssh_keys(current, preselect_all, signing)
+    while single and len(chosen) > 1:
+        warn("pick one key, or none")
+        chosen = _pick_ssh_keys([fp for fp, _ in chosen], False, signing)
+    return chosen
+
+
+def _pick_ssh_keys(current, preselect_all, signing):
     """One multiselect over everything usable, in two sections: keys already in
     the agent, and key files in ~/.ssh. Returns [(fingerprint, label)].
 
@@ -1206,12 +1276,14 @@ def pick_ssh_keys(current, preselect_all):
 
     agent, disk = [], []          # (id, row, label)
     for fp, info in known.items():
-        item = (fp, _describe(info), _describe(info))
+        mark = SIGNS_MARK if fp == signing else ""
+        item = (fp, _describe(info) + mark, _describe(info))
         (agent if info["loaded"] else disk).append(item)
     for name, path in unnamed:
         label = f"{name}  {tilde(path)}"
         disk.append((f"file:{path}", f"{label}  (encrypted: asks for its passphrase if picked)", label))
-    gone = [(fp, "(not in the agent or ~/.ssh now)", "(not in the agent or ~/.ssh now)")
+    gone = [(fp, "(not in the agent or ~/.ssh now)" + (SIGNS_MARK if fp == signing else ""),
+             "(not in the agent or ~/.ssh now)")
             for fp in current or [] if fp not in known]
 
     options, ids, labels = [], {}, {}
@@ -1258,7 +1330,9 @@ def ensure_keys_loaded(box):
     Keys are found by fingerprint. An encrypted key with no .pub cannot be
     named without its passphrase, so when a fingerprint matches no named file
     the remaining unnamed files are tried in turn, stopping once it appears."""
-    wanted = box.ssh_keys
+    wanted = list(box.ssh_keys or [])
+    if box.signing_active and box.signing_fp not in wanted:
+        wanted.append(box.signing_fp)       # unrestricted, but it must still be loaded
     if not wanted:
         return
     loaded = {fp for fp, _, _ in host_agent_keys()}
@@ -1302,7 +1376,17 @@ def cmd_keys(args, config):
     if current is None:
         note("currently unrestricted: every key in the host agent is visible")
     note("Only the ticked keys can be listed or sign from inside the sandbox.")
-    chosen = pick_ssh_keys(current, preselect_all=True)
+    signing = box.signing_fp
+    if signing:
+        note(f"{box.identity_name} signs commits with the key marked{SIGNS_MARK.strip()}.")
+    chosen = pick_ssh_keys(current, preselect_all=True, signing=signing)
+    if signing and signing not in {fp for fp, _ in chosen} \
+            and (current is None or signing in current):
+        warn(f"that key signs commits for identity {box.identity_name!r}: without it "
+             f"this sandbox stops signing (commits go unsigned)")
+        if not confirm("drop it anyway?"):
+            chosen.append((signing, _key_labels([signing]).get(signing, "")))
+            note("kept")
     write_ssh_keys(box, chosen)
     note(f"{len(chosen)} key(s) saved; takes effect immediately, no restart.")
     if agent_binding(box) == "raw":
@@ -1419,20 +1503,54 @@ def ensure_profile(box):
          "_", MERGE_CLAUDE_JSON], check=False, quiet=True)
 
 
+# Where ensure_identity() writes the guest's allowed-signers file for ssh
+# commit signing. Under /etc like the --system config that points at it.
+GUEST_ALLOWED_SIGNERS = "/etc/git/allowed_signers"
+
+
 def ensure_identity(box):
     """Set the guest's global git identity. Per boot, like the profile seed, so
     editing config.toml takes effect on the next start rather than on a rebuild.
     """
     ident = box.identity
-    if not ident:
-        return
+    # Signing is --system too, for the same reason as the name: a repo's own
+    # config can still override it. It is switched OFF again whenever it is not
+    # active (identity changed, key dropped from `msbctl keys`), because the
+    # guest's /etc/gitconfig outlives the setting that wrote it.
+    #
+    # The allowed-signers file lists only this identity's own key, so that
+    # `git log --show-signature` / `git verify-commit` can check what the
+    # sandbox signed; anyone else's commits read "no principal matched", which
+    # is ssh signing's normal answer for an unknown key.
+    keys = ("gpg.format", "user.signingkey", "commit.gpgsign", "tag.gpgsign",
+            "gpg.ssh.allowedSignersFile")
+    script = ('git config --system user.name "$1" && git config --system user.email "$2"; '
+              if ident else "")
+    if ident and box.signing_active:
+        pub = ident["signing_key"].split()
+        script += ('git config --system gpg.format ssh; '
+                   'git config --system user.signingkey "key::$3 $4"; '
+                   'git config --system commit.gpgsign true; '
+                   'git config --system tag.gpgsign true; '
+                   f'mkdir -p {GUEST_ALLOWED_SIGNERS.rsplit("/", 1)[0]} && '
+                   f'printf \'%s %s %s\\n\' "$2" "$3" "$4" > {GUEST_ALLOWED_SIGNERS} && '
+                   f'git config --system gpg.ssh.allowedSignersFile {GUEST_ALLOWED_SIGNERS}; '
+                   'command -v ssh-keygen >/dev/null || '
+                   'echo "msbctl: no ssh-keygen in the guest, so commits cannot be signed '
+                   '(rebuild to install openssh-client)" >&2')
+        args = [ident["name"], ident["email"], pub[0], pub[1]]
+    else:
+        script += "; ".join(f"git config --system --unset {k}" for k in keys)
+        script += f"; rm -f {GUEST_ALLOWED_SIGNERS}; true"
+        args = [ident["name"], ident["email"]] if ident else []
     # Values passed as positional args, not interpolated into the command
     # string. A name with a quote or a space in it then cannot break the
     # command, and there is no quoting to get right in the first place.
-    run(["msb", "exec", box.name, "--no-tty", "--", "sh", "-c",
-         'git config --system user.name "$1" && git config --system user.email "$2"',
-         "_", ident["name"], ident["email"]],
+    run(["msb", "exec", box.name, "--no-tty", "--", "sh", "-c", script, "_", *args],
         check=False, quiet=True)
+    if ident and box.signing_fp and not box.signing_active:
+        warn(f"{box.name}: identity {box.identity_name!r} signs with a key this sandbox "
+             f"cannot use, so commits are NOT signed — `msbctl keys {box.name}` to allow it")
 
 
 def ensure_running(box, table=None):
@@ -2581,6 +2699,24 @@ def _summary_identities(config):
     return (", ".join(ids) + (f"  (default {default})" if default else "")) if ids else "none"
 
 
+def pick_signing_key(current_pub):
+    """Choose the ssh key an identity signs commits with, or none. Returns the
+    public key line to store (git needs the key itself, not a fingerprint), or
+    None. Same dialog as `msbctl keys`; the key still has to be one a sandbox is
+    allowed to use, which `msbctl keys` and `msbctl add` take care of."""
+    cur = _parse_pub_line(current_pub)[0] if current_pub and _parse_pub_line(current_pub) else None
+    note("Sign commits with an ssh key? Tick one key to sign every commit made as this")
+    note("identity (git's ssh signing; the key stays in your host agent), or none.")
+    chosen = pick_ssh_keys([cur] if cur else [], preselect_all=False, signing=cur, single=True)
+    if not chosen:
+        return None
+    pub = public_line(chosen[0][0])
+    if not pub:
+        warn("could not read that key's public half — no signing key saved")
+        return None
+    return pub
+
+
 def section_identities(config, ctx):
     while True:
         config = load_config()
@@ -2590,7 +2726,8 @@ def section_identities(config, ctx):
         note("(a microVM has no host-global git config). Prefer the GitHub noreply form")
         note("for anything that can reach a public repo: https://github.com/settings/emails")
         for key in sorted(local):
-            note(f"  {key:<12} {local[key].get('name', '?')} <{local[key].get('email', '?')}>")
+            note(f"  {key:<12} {local[key].get('name', '?')} <{local[key].get('email', '?')}>"
+                 + ("  (signs commits)" if local[key].get("signing_key") else ""))
         action = choose_one("identities", ["add or change one", "remove one",
                                            "which is the default for new sandboxes", "back"], 0)
         if action.startswith("add"):
@@ -2605,8 +2742,10 @@ def section_identities(config, ctx):
                 warn("needs a name and an email address — nothing saved")
                 continue
             table = f"identities.{key}"
+            signing = pick_signing_key(cur.get("signing_key"))
             set_toml_key(CONFIG_FILE, "name", name, table=table)
             set_toml_key(CONFIG_FILE, "email", email, table=table)
+            set_toml_key(CONFIG_FILE, "signing_key", signing, table=table)
             note(f"saved {key}")
             if len(local) == 0 and not config.get("defaults", {}).get("identity"):
                 set_toml_key(CONFIG_FILE, "identity", key, table="defaults")
@@ -3246,6 +3385,16 @@ def section_identity(box, config, ctx):
         choice = choose_one("git identity", options, options.index(current))
         set_toml_key(path, "identity", "" if choice == "(none)" else choice)
         note("applied on the next start")
+        box = Sandbox(box.name, config)
+        fp, keys = box.signing_fp, box.ssh_keys
+        if fp and keys is not None and fp not in keys:
+            note(f"{choice} signs commits, but this sandbox is not allowed that key.")
+            if confirm("allow it (so commits are signed)?"):
+                labels = _key_labels(keys + [fp])
+                write_ssh_keys(box, [(k, labels.get(k, "")) for k in keys + [fp]])
+                note("key added; takes effect immediately")
+                if os.environ.get("SSH_AUTH_SOCK"):
+                    ensure_keys_loaded(Sandbox(box.name, config))
     else:
         note("no identities defined — add some under [identities] in your config.toml")
     auto = choose_one("start with the others by default", ["yes", "no"], 0 if box.autostart else 1)
@@ -3581,6 +3730,11 @@ def cmd_show(args, config):
     if ident:
         note(f"  git  {ident['name']} <{ident['email']}>  "
              f"({box.identity_name}, --system — a repo's own .git/config wins)")
+        if box.signing_active:
+            note("       commits signed with an ssh key served by the agent")
+        elif box.signing_fp:
+            note(f"       NOT signing: {box.identity_name} names a key this sandbox may not "
+                 f"use — `msbctl keys {box.name}`")
     else:
         note("  git  no identity set; a repo without one cannot commit here")
     secret_flags, _ = box.secret_env()
@@ -3633,7 +3787,8 @@ def ssh_agent_lines(box):
                 "visible (listing and signing only) — `msbctl keys` to choose"]
     labels = _key_labels(keys)
     lines = [f"ssh-agent: {where}, {len(keys)} key(s); the key itself never crosses"]
-    lines += [f"  {labels.get(fp, '')}" for fp in keys]
+    lines += [f"  {labels.get(fp, '')}" + (SIGNS_MARK if fp == box.signing_fp else "")
+              for fp in keys]
     return lines
 
 
@@ -4725,7 +4880,12 @@ def cmd_add(args, config):
     note("Which keys in your host ssh-agent this sandbox may use, for git over")
     note("ssh and for signing. Nothing is ticked by default: a sandbox gets no")
     note("key until you give it one. Change later with `msbctl keys <name>`.")
-    ssh_keys = pick_ssh_keys(None, preselect_all=False)
+    sign_pub = idents.get(identity, {}).get("signing_key") if identity else None
+    sign_fp = (_parse_pub_line(sign_pub) or (None,))[0] if sign_pub else None
+    if sign_fp:
+        note(f"{identity} signs commits with the key marked{SIGNS_MARK.strip()}; it is ticked")
+        note("for you, and without it this sandbox commits unsigned.")
+    ssh_keys = pick_ssh_keys([sign_fp] if sign_fp else None, preselect_all=False, signing=sign_fp)
 
     groups = sorted(g for g in config.get("rules", {}) if g != "base")
     default_groups = config.get("defaults", {}).get("rule_groups", [])
@@ -4966,6 +5126,8 @@ def cmd_status(args, config):
         if ident:
             print(f"   as     {ident['name']}")
             print(f"          {DIM}{ident['email']}{RESET}")
+            if box.signing_fp:
+                print(f"          {DIM}signs commits{'' if box.signing_active else ' (key not allowed: off)'}{RESET}")
         else:
             print(f"   as     {DIM}no identity — a repo without one cannot commit{RESET}")
         print(f"   image  {image_short(box.image_or_none())}")

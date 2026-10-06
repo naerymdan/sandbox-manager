@@ -107,7 +107,7 @@ do_apt() {
 	# shellcheck disable=SC2086 # deliberate word splitting: a package list
 	apt-get install -y -qq --no-install-recommends \
 		socat jq curl ca-certificates ripgrep fd-find tree unzip file \
-		yamllint shellcheck gnupg $EXTRA_PACKAGES
+		yamllint shellcheck gnupg openssh-client $EXTRA_PACKAGES
 	command -v socat >/dev/null   # no socat, no agent bridge
 	# Debian/Ubuntu name the binary fdfind to avoid a clash; everyone else's
 	# docs and muscle memory say fd.
