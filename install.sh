@@ -248,7 +248,7 @@ if [ "$MODE" = package ]; then
 		fi
 	done
 else
-	chmod +x "$HERE/msbctl" "$HERE/msb-picker" "$HERE/bootstrap.sh"
+	chmod +x "$HERE/msbctl" "$HERE/msb-picker"
 	TOOLDIR="$HERE"
 fi
 
