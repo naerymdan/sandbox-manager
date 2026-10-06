@@ -14,6 +14,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `.gitignore` blocks `*.env` and `secrets/`. Nothing machine-local or generated belongs in the repo.
 - Comments in config/templates are the documentation (failure modes are non-obvious and cost debugging sessions). Preserve and extend them when changing behaviour; `msbctl --help` and `defaults.toml` are the user-facing docs.
 
+## Changelog, CI and releases
+
+- **Every behaviour change gets a ONE-LINE entry in `CHANGELOG.md`**, under `## [Unreleased]` in the matching `### Added` / `### Changed` / `### Fixed` / `### Removed` group. One line, user-facing, what changed and what a user must do about it (e.g. "needs a rebuild"). No file lists, no rationale, no commit hashes; the commit message and code comments carry those. Refactors, test-only and CI-only changes with no user-visible effect need no entry.
+- `scripts/check.sh` is the static check suite and is exactly what CI runs (syntax, shellcheck, TOML, `PAYLOAD` in step between `install.sh` and `package.sh`, tracked modes, gitleaks). Run it before committing. `scripts/smoke-install.sh` packages and installs into a throwaway HOME.
+- Tracked modes: a file with a shebang is 755, everything else 644, except `bootstrap.sh` (piped into the guest, never executed from disk, so 644). `sed -i` and some editors recreate a file without its executable bit; `check.sh` reads the git index, so `git add` after any `chmod`.
+- Releases are tag-driven (`.github/workflows/release.yml`): move the Unreleased entries under `## [X.Y.Z] - YYYY-MM-DD`, set `VERSION`, merge, then `git tag vX.Y.Z && git push origin vX.Y.Z`. The workflow refuses if the tag, `VERSION` and a non-empty changelog section disagree. Never publish by hand with `gh release create` unless the workflow is broken.
+- Workflows use `pull_request`, never `pull_request_target`, with read-only default permissions; actions are pinned by commit hash with the version in a comment (Dependabot keeps them current).
+
 ## Layout
 
 - `msbctl` — single-file Python CLI (~1900 lines). `Sandbox` class (config resolution, `msb` flag emission), `cmd_*` handlers, `main()` argparse at the bottom, fzf menu with numbered-prompt fallback.
