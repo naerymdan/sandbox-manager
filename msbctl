@@ -9,7 +9,7 @@
     msbctl start|stop <name>…         repeatable: acts on each in turn
     msbctl rebuild <name>         destroy and recreate; keeps ~/.claude state
     msbctl purge <name>           destroy, delete state, secret and registration
-    msbctl update <name>… [-c what…] update claude / gh / gitleaks / apt in place
+    msbctl update <name>… [-c what…] update claude / gh / gitleaks / bun / apt in place
     msbctl shell <name>           interactive shell, ssh-agent wired up
     msbctl keys <name>            choose which host ssh keys it can use
     msbctl config                 the merged configuration, with where each value is from
@@ -1486,8 +1486,6 @@ def warn_missing_prereqs(box):
         needs.append(("claude-code install", ["registry.npmjs.org"]))
         needs.append(("claude-code runtime", ["api.anthropic.com",
                                               "platform.claude.com"]))
-    if boot.get("bun"):
-        needs.append(("bun", ["bun.sh"]))
     needs.append(("gh" + (" + gitleaks" if boot.get("gitleaks") else "") + " downloads",
                   ["github.com", "release-assets.githubusercontent.com"]))
 
@@ -1545,6 +1543,7 @@ def bootstrap_payload(box):
         "MSB_NODE_MAJOR": str(versions.get("node", "22")),
         "MSB_GITLEAKS_VERSION": str(versions.get("gitleaks", "8.30.1")),
         "MSB_GH_VERSION": str(versions.get("gh", "2.102.0")),
+        "MSB_BUN_VERSION": str(versions.get("bun", "1.4.2")),
         "MSB_EXTRA_PACKAGES": " ".join(boot.get("packages", [])),
         # Default TRUE: this manager exists to run agents, so an explicit
         # opt-out is the right shape rather than an explicit opt-in.
@@ -3661,7 +3660,8 @@ def available_release(repo, token=None):
     if token:
         headers["Authorization"] = f"Bearer {token}"
     data = http_json(f"https://api.github.com/repos/{repo}/releases/latest", headers)
-    return (data.get("tag_name", "").lstrip("v") or None) if data else None
+    # Tags are "v1.2.3" for most, "bun-v1.2.3" for bun: keep from the first digit.
+    return (re.sub(r"^[^0-9]*", "", data.get("tag_name", "")) or None) if data else None
 
 
 def available_node(major):
@@ -3842,7 +3842,7 @@ def cmd_update(args, config):
             note("the image is fixed at create time and cannot be updated in")
             note(f"place. Edit {box.conf}'s digest, then: msbctl rebuild {box.name}")
             continue
-        if comp in ("gh", "gitleaks"):
+        if comp in ("gh", "gitleaks", "bun"):
             target = (cache.get(box.name, {}).get(comp, {}) or {}).get("available")
             if not target:
                 note(f"no known upstream version — run `msbctl ls --refresh` first")
@@ -3852,7 +3852,7 @@ def cmd_update(args, config):
             script = UPDATERS[comp]
         else:
             die(f"nothing knows how to update {comp!r}. "
-                f"Known: claude, gh, gitleaks, apt, image")
+                f"Known: claude, gh, gitleaks, bun, apt, image")
 
         proc = run(["msb", "exec", box.name, "--no-tty", "--", "bash", "-c", script],
                    check=False, capture=True)
@@ -3863,7 +3863,7 @@ def cmd_update(args, config):
 
         # Record it, or the next rebuild silently reverts to bootstrap.sh's pin
         # and "I updated gh" quietly stops being true.
-        if comp in ("gh", "gitleaks"):
+        if comp in ("gh", "gitleaks", "bun"):
             write_version_override(box, comp, target)
             note(f"pinned {comp}={target} in the registry entry, so a rebuild "
                  "reproduces it")
@@ -3887,6 +3887,19 @@ def installer_script(comp, version):
             'tmp=$(mktemp) && curl -fsSL -o "$tmp" "$url" '
             '&& tar -xzf "$tmp" -C /usr/local/bin gitleaks && rm -f "$tmp"\n'
             'gitleaks version\n'
+        )
+    if comp == "bun":
+        return (
+            'arch=x64; [ "$(uname -m)" = aarch64 ] && arch=aarch64\n'
+            f'base="https://github.com/oven-sh/bun/releases/download/bun-v{version}"\n'
+            'zip="bun-linux-${arch}.zip"\n'
+            'tmp=$(mktemp -d)\n'
+            'curl -fsSL -o "$tmp/$zip" "$base/$zip" '
+            '&& curl -fsSL -o "$tmp/sums" "$base/SHASUMS256.txt" '
+            '&& (cd "$tmp" && grep " $zip\\$" sums | sha256sum -c --quiet) '
+            '&& unzip -q "$tmp/$zip" -d "$tmp" '
+            '&& install "$tmp/bun-linux-${arch}/bun" /usr/local/bin/bun\n'
+            'rc=$?; rm -rf "$tmp"; [ $rc -eq 0 ] && bun --version\n'
         )
     return (
         'arch=amd64; [ "$(uname -m)" = aarch64 ] && arch=arm64\n'
@@ -5267,7 +5280,7 @@ def main():
     p.add_argument("names", nargs="+", metavar="name")
     p.add_argument("-c", "--components", nargs="+", default=["claude"],
                    metavar="component",
-                   help="claude (default), gh, gitleaks, apt")
+                   help="claude (default), gh, gitleaks, bun, apt")
     p.set_defaults(func=cmd_update)
 
     args = parser.parse_args()
