@@ -65,6 +65,12 @@ autostart = {{AUTOSTART}}
 # conf        = ".msb/dev.yaml"     # relative to project
 # rule_groups = ["github", "npm", "python"]
 # extra_rules = ["allow@mirror.example.com:tcp:443"]
+#
+# egress_mode = "observe"   # NOTHING IS BLOCKED; every host reached is recorded.
+#                           # For finding out what the rules above are missing,
+#                           # because msb never says what it denied. Temporary:
+#                           # `msbctl observe {{NAME}}` reads the record back,
+#                           # `msbctl observe {{NAME}} off` restores deny-by-default.
 
 # ----------------------------------------------------------------- versions
 #

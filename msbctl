@@ -19,6 +19,7 @@
     msbctl resize <name>          change cpus / memory / root disk, keeping its state
     msbctl cache <name> [ls|clear [key]]   the package-cache disks
     msbctl allow <name> host…     add egress rules (then rebuild to apply)
+    msbctl observe <name> [on|off|report]   stop blocking and record what is reached
     msbctl secret add|rm|ls <name>   extra tokens the sandbox can use but not see
     msbctl mount <name> SRC[:DEST][:ro|rw]   add an extra host folder (then rebuild)
     msbctl exec <name> -- cmd…
@@ -79,6 +80,10 @@ SECRETS_DIR = os.path.join(CONFIG_DIR, "secrets")
 VERSIONS_CACHE = os.path.join(STATE_DIR, "versions.json")
 # One filtering agent per sandbox lives here: <name>.sock, .upstream, .pid, .log
 AGENT_DIR = os.path.join(STATE_DIR, "agent")
+# msb's OWN state, which it owns and we only read: the per-sandbox runtime.log
+# under here is the only record of what a sandbox reached. MSB_HOME is msb's
+# variable, not one of ours — read it so a relocated msb is still followed.
+MSB_HOME = os.environ.get("MSB_HOME", os.path.join(HOME, ".microsandbox"))
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 TEMPLATES = os.path.join(HERE, "templates")
@@ -143,6 +148,49 @@ MERGE_CLAUDE_JSON = (
 
 BOLD, DIM, RESET = "\033[1m", "\033[2m", "\033[0m"
 GREEN = "\033[32m"
+RED = "\033[31m"
+
+# How a sandbox treats egress. See Sandbox.egress_mode for why "observe" is not
+# a third policy but a temporary measuring mode.
+EGRESS_MODES = ("enforce", "observe")
+
+# Hosts that receive a coding agent's ENTIRE conversation on every single turn,
+# and therefore every string it has ever seen.
+#
+# That makes them a special case for secrets, and getting it wrong costs a long
+# debugging session. msb scans every outbound request for its own PLACEHOLDERS
+# ($MSB_<VAR>, what the guest sees in place of a real token) and blocks any
+# request carrying one where substitution is not permitted — bodies are not,
+# only headers. The moment an agent so much as runs `env`, the literal text
+# `$MSB_GH_TOKEN` is in its transcript, and from then on EVERY request it makes
+# is blocked: msb tears the TLS connection down and the agent reports it as
+# `API Error: Connection dropped (ECONNRESET)`, which names nothing. The tell is
+# that a brand-new session works and then degrades, because a fresh transcript
+# is clean and never gets clean again.
+#
+# `passthrough=` is the fix and it gives nothing away: it lets the PLACEHOLDER
+# travel unsubstituted to these hosts. The real value is still only ever put
+# into headers, still only for the secret's own bound hosts. Verified both ways
+# on 0.7.7 — the passthrough host receives the literal `$MSB_<VAR>`, and header
+# substitution for a bound host keeps working alongside it.
+AGENT_TRANSCRIPT_HOSTS = ("api.anthropic.com", "platform.claude.com")
+
+
+def with_transcript_passthrough(spec):
+    """`ENV[:OPTIONS]@HOST[,HOST]` with the transcript hosts added to passthrough.
+
+    Left alone if the spec already says `passthrough=`: that is an operator who
+    wrote the binding by hand and said what they meant, and msb rejects a second,
+    conflicting list anyway.
+    """
+    env, _, hosts = spec.rpartition("@")
+    if not env or not hosts:
+        return spec
+    var, _, options = env.partition(":")
+    if "passthrough=" in options:
+        return spec
+    added = "passthrough=[" + ",".join(AGENT_TRANSCRIPT_HOSTS) + "]"
+    return f"{var}:{options + ':' if options else ''}{added}@{hosts}"
 
 
 # --------------------------------------------------------------------- output
@@ -398,6 +446,38 @@ class Sandbox:
         return [g for g in groups if g != "base"]
 
     @property
+    def egress_mode(self):
+        """"enforce" (deny-by-default, the point of this tool) or "observe".
+
+        OBSERVE IS A DELIBERATE, TEMPORARY DOWNGRADE, not a softer policy. It
+        exists because msb cannot report a denial: it logs what it ALLOWS and
+        says nothing at all about what it blocks, at any log level (re-verified
+        on 0.7.7 at --debug and --trace). So there is no "warn but permit" to
+        emit, and the only way to learn what a sandbox actually needs is to let
+        it through and write down where it went.
+
+        What that costs while it is on: egress is unrestricted, so a sandbox can
+        reach anywhere and anything in it could exfiltrate. Secrets are NOT
+        exposed by this — substitution stays host-side and bound to its named
+        hosts — but everything the guest can read, it can now send. Turn it on
+        to collect, run `msbctl observe <name>` to see what was reached, feed
+        that to `msbctl allow`, and turn it off again.
+
+        Create-time, like every other network setting: changing it needs a
+        rebuild, not a restart.
+        """
+        mode = self._pick("egress_mode",
+                          self.config.get("defaults", {}).get("egress_mode", "enforce"))
+        if mode not in EGRESS_MODES:
+            die(f"{self.name}: egress_mode is {mode!r}, expected one of "
+                f"{', '.join(EGRESS_MODES)}")
+        return mode
+
+    @property
+    def observing(self):
+        return self.egress_mode == "observe"
+
+    @property
     def extra_rules(self):
         return self._pick("extra_rules", [])
 
@@ -480,8 +560,13 @@ class Sandbox:
                 # cause. Both are Anthropic's own endpoints and the token is
                 # minted by `claude setup-token` against them, so this widens
                 # nothing: it is the same credential reaching the same party.
-                flags += ["--secret",
-                          "CLAUDE_CODE_OAUTH_TOKEN@api.anthropic.com,platform.claude.com"]
+                # Its own hosts are also its passthrough hosts, which is not a
+                # contradiction: the real token goes in the headers, and the
+                # placeholder is allowed to appear in the BODY — which is where
+                # it lands as soon as the agent reads it back out of its own
+                # environment and it becomes part of the transcript.
+                flags += ["--secret", with_transcript_passthrough(
+                    "CLAUDE_CODE_OAUTH_TOKEN@api.anthropic.com,platform.claude.com")]
             else:
                 warn("no CLAUDE_CODE_OAUTH_TOKEN in secrets/global.env — "
                      "Claude Code will not be logged in. Run `claude setup-token`.")
@@ -491,7 +576,8 @@ class Sandbox:
                 .get("GH_TOKEN")
             if token:
                 env["GH_TOKEN"] = token
-                flags += ["--secret", "GH_TOKEN@github.com,api.github.com"]
+                flags += ["--secret", with_transcript_passthrough(
+                    "GH_TOKEN@github.com,api.github.com")]
             else:
                 note(f"no GH_TOKEN for {self.name} — the GitHub API is unavailable "
                      "in this sandbox (git push over SSH still works)")
@@ -507,7 +593,7 @@ class Sandbox:
             value = own.get(var) or shared.get(var)
             if value:
                 env[var] = value
-                flags += ["--secret", spec]
+                flags += ["--secret", with_transcript_passthrough(spec)]
             else:
                 note(f"no {var} for {self.name} — `msbctl secret add {self.name}` "
                      "(skipped for now)")
@@ -516,7 +602,11 @@ class Sandbox:
             # Substitution happens in request HEADERS only. A placeholder sent
             # in a URL or a body is refused, and without this flag that refusal
             # arrives as an ordinary connection error with nothing naming the
-            # cause. block-and-log keeps the block and makes it diagnosable.
+            # cause. block-and-log keeps the block and makes it diagnosable —
+            # it is the ONLY record there is, since the guest just sees its
+            # connection drop. See AGENT_TRANSCRIPT_HOSTS for the refusal this
+            # hits in practice, and why every binding above opts out of it for
+            # the agent's own endpoints.
             flags += ["--secret-violation-action", "block-and-log"]
         return flags, env
 
@@ -591,16 +681,38 @@ class Sandbox:
         # signs only the keys the entry lists. The path is baked in at create
         # time, so it must stay stable per sandbox.
         flags += ["--vsock", f"{self.agent_sock}:{VSOCK_PORT}"]
-        # State the default explicitly: allow rules alone do NOT close egress.
-        flags += ["--net-default-egress", "deny"]
-        for rule in self.net_rules():
-            flags += ["--net-rule", rule]
+        if self.observing:
+            # Nothing is blocked and everything reachable is recorded. NOT a
+            # loosened allowlist — no --net-rule at all, because a half-applied
+            # policy would still block, and a blocked connection leaves no trace
+            # to collect. The rules stay in the config and keep being curated by
+            # `allow` and `edit`; they are simply not emitted while measuring.
+            flags += ["--net-default-egress", "allow"]
+            # The record itself. msb logs an intercepted connection as
+            # `TLS intercept sni=<host> dst=<ip:port>` and a resolved name as a
+            # dns:: line, both at DEBUG and neither at INFO — so without this
+            # observe mode would unblock without observing anything. It writes
+            # to the sandbox's own runtime.log, not to a terminal.
+            flags += ["--log-level", "debug"]
+            # Rebind protection drops answers that resolve to private addresses,
+            # which is a block like any other: the name comes back NXDOMAIN, the
+            # connection never happens and nothing is written down. Measuring
+            # mode has to see it, so it comes off with the rest.
+            flags += ["--no-dns-rebind-protection"]
+        else:
+            # State the default explicitly: allow rules alone do NOT close egress.
+            flags += ["--net-default-egress", "deny"]
+            for rule in self.net_rules():
+                flags += ["--net-rule", rule]
+            if self.allow_private_dns:
+                flags += ["--no-dns-rebind-protection"]
         # Without this, every HTTPS hostname rule above is a silent deny. It is
         # also what makes secret placeholder substitution possible, so the two
-        # requirements coincide and neither can be dropped alone.
+        # requirements coincide and neither can be dropped alone. In observe
+        # mode it is also what puts a HOSTNAME rather than an address in the
+        # log, which is what the rules are written in — so it stays on there
+        # too, even though nothing is being enforced.
         flags += ["--tls-intercept"]
-        if self.allow_private_dns:
-            flags += ["--no-dns-rebind-protection"]
         flags += ["--root-disk", str(self.root_disk)]
         # Explicit flags, not just dev.yaml: that file is written once by the
         # wizard, so a cpus/memory override in the registry entry or sandbox.toml
@@ -1827,6 +1939,274 @@ def cmd_allow(args, config):
         note(f"takes effect when the sandbox is created: `msbctl rebuild {box.name}`")
 
 
+# ------------------------------------------------------- the observation log
+#
+# msb's own log is the only record of where a sandbox went, and it is a record
+# of SUCCESSES: a denied connection is logged at no level at all (checked on
+# 0.7.7 at --debug and --trace), which is the whole reason observe mode has to
+# unblock before it can measure. Two line shapes carry a destination, both at
+# DEBUG only:
+#
+#   …engine::tls::proxy: TLS intercept sni=github.com dst=140.82.113.3:443
+#   …engine::dns::forwarder: DNS query family is inactive … domain=github.com
+#
+# The first is the useful one — an intercepted connection named by its SNI,
+# which is the exact form a rule is written in. The second is a RESOLUTION, not
+# a connection, and it is all there is for anything that is not HTTPS: a plain
+# TCP connect (:80, :22, git over ssh, a database) is never logged. So a name
+# seen only in DNS was looked up, probably connected to, and on a port this
+# cannot name. The report labels the two differently rather than pretending the
+# second is as good as the first.
+OBSERVED_TLS = re.compile(r"TLS (?:intercept|bypass) sni=(\S+) dst=(\S+)")
+OBSERVED_DNS = re.compile(r"\bdomain=([A-Za-z0-9*._-]+)")
+LOG_STAMP = re.compile(r"^(\d{4}-\d\d-\d\d)T([\d:]{8})")
+
+
+def runtime_logs(name):
+    """The sandbox's runtime.log and any rotations of it, oldest first."""
+    folder = os.path.join(MSB_HOME, "sandboxes", name, "logs")
+    try:
+        names = os.listdir(folder)
+    except OSError:
+        return []
+    # runtime.log.2 is older than runtime.log.1, which is older than runtime.log.
+    rotated = sorted((f for f in names if re.fullmatch(r"runtime\.log\.\d+", f)),
+                     key=lambda f: int(f.rsplit(".", 1)[-1]), reverse=True)
+    return [os.path.join(folder, f) for f in rotated + ["runtime.log"]
+            if os.path.isfile(os.path.join(folder, f))]
+
+
+def observed_hosts(name):
+    """{(host, port): {hits, first, last}} — where this sandbox has been.
+
+    port is "" for a name that only ever appeared in a DNS lookup; see the note
+    above OBSERVED_TLS for why that is the best available off :443.
+    """
+    seen = {}
+
+    def record(host, port, when):
+        key = (host.lower().rstrip("."), port)
+        entry = seen.setdefault(key, {"hits": 0, "first": when, "last": when})
+        entry["hits"] += 1
+        entry["last"] = when
+
+    for path in runtime_logs(name):
+        try:
+            fh = open(path, encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        with fh:
+            for line in fh:
+                stamp = LOG_STAMP.match(line)
+                when = f"{stamp.group(1)} {stamp.group(2)}" if stamp else "?"
+                tls = OBSERVED_TLS.search(line)
+                if tls:
+                    port = tls.group(2).rsplit(":", 1)[-1]
+                    record(tls.group(1), port if port.isdigit() else "", when)
+                elif "::dns::" in line:
+                    dns = OBSERVED_DNS.search(line)
+                    if dns:
+                        record(dns.group(1), "", when)
+    # A host reached over TLS also shows up in DNS. Keep the connection, which
+    # names a port, and drop the bare lookup that says less about the same trip.
+    with_port = {host for host, port in seen if port}
+    return {(host, port): v for (host, port), v in seen.items()
+            if port or host not in with_port}
+
+
+SECRET_VIOLATION = re.compile(r"secret violation: placeholder detected")
+LOG_FIELD = re.compile(r"\b(\w+)=(\S*)")
+
+
+def secret_violations(name):
+    """{(var, host, location): {hits, last}} — requests msb KILLED over a secret.
+
+    Nothing else reports these. The guest sees its TLS connection drop and calls
+    it ECONNRESET; the rule set is irrelevant and allowing the host does not
+    help, because this is the secret policy and not the network one. See
+    AGENT_TRANSCRIPT_HOSTS. Logged at WARN, so unlike the host record this is
+    there in enforce mode too, at msb's default verbosity.
+    """
+    hits = {}
+    for path in runtime_logs(name):
+        try:
+            fh = open(path, encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        with fh:
+            for line in fh:
+                if not SECRET_VIOLATION.search(line):
+                    continue
+                field = dict(LOG_FIELD.findall(line))
+                stamp = LOG_STAMP.match(line)
+                key = (field.get("secret_env_var", "?"),
+                       field.get("host") or field.get("sni", "?"),
+                       field.get("location", "?"))
+                entry = hits.setdefault(key, {"hits": 0, "last": "?"})
+                entry["hits"] += 1
+                if stamp:
+                    entry["last"] = f"{stamp.group(1)} {stamp.group(2)}"
+    return hits
+
+
+def report_secret_violations(box):
+    """The loud half of the observe report. Returns True if anything was found."""
+    hits = secret_violations(box.name)
+    if not hits:
+        return False
+    say(f"{RED}{BOLD}Requests BLOCKED by the secret policy{RESET}")
+    note("These never reached the network, whatever the egress rules say. The")
+    note("guest sees only a dropped connection — an agent reports it as")
+    note("`API Error: Connection dropped (ECONNRESET)`.")
+    note("")
+    for (var, host, where), info in sorted(hits.items(), key=lambda kv: -kv[1]["hits"]):
+        note(f"  {var} placeholder in the {where} of a request to {host}"
+             f"   {info['hits']} time(s), last {info['last']}")
+    note("")
+    note("A placeholder is the harmless stand-in text the guest sees; the real")
+    note("value never left the host. It gets into an agent's requests because the")
+    note("agent read it once and its transcript is resent on every turn — which is")
+    note("why a fresh session works and then degrades.")
+    note(f"Fixed by `msbctl rebuild {box.name}`: msbctl now lets the placeholder")
+    note("through to the agent's own endpoints and nothing else.")
+    return True
+
+
+def rule_allows(rules, host, port):
+    """Whether `rules` already permit `host` on `port`, judged BY NAME.
+
+    First-match-wins, so this walks the list in order and the first rule whose
+    target names the host decides it. Only domain and suffix targets are
+    considered: `public`, `private` and bare addresses cannot be matched against
+    a name without resolving it, and a resolution done here and now on the host
+    is not the one msb would do in the guest at connect time. Those rules are
+    skipped, so the worst this can do is call something uncovered that msb would
+    in fact permit — the safe direction for a hint whose output you then read
+    before running it.
+    """
+    for rule in rules:
+        action, _, target = rule.partition("@")
+        action = action.split(":")[0]           # drop an :egress/:ingress direction
+        spec = target.split(":")
+        name = spec[0]
+        if name.startswith("suffix="):
+            name = "*." + name[len("suffix="):]
+        if port and len(spec) >= 3 and spec[2] and spec[2] != port:
+            continue                            # a rule about a different port
+        if name.startswith("*."):
+            bare = name[2:].lower()
+            if host != bare and not host.endswith("." + bare):
+                continue
+        elif name.lower() != host:
+            continue
+        return action == "allow"
+    return False
+
+
+def cmd_observe(args, config):
+    """Stop blocking a sandbox and record where it goes, or read that record back.
+
+    The workflow this exists for, in order: `on`, use the sandbox normally for a
+    while, `report` to see every host it reached, `msbctl allow` the ones that
+    belong, `off`. Observe mode is the measuring step, not a destination.
+    """
+    box = Sandbox(args.name, config)
+    if args.action in ("on", "off"):
+        _observe_set(box, "observe" if args.action == "on" else "enforce", args, config)
+    else:
+        _observe_report(box)
+
+
+def _observe_set(box, mode, args, config):
+    if box.egress_mode == mode:
+        note(f"{box.name} is already in {mode} mode")
+        return
+    if mode == "observe":
+        warn(f"{box.name} will have UNRESTRICTED egress until you turn this back off.")
+        note("Nothing is denied, and every host it reaches is written to its")
+        note("runtime.log. Your secrets stay bound to their own hosts and are not")
+        note("exposed by this — but anything the guest can read, it can now send")
+        note("anywhere. DNS rebind protection comes off with the rest.")
+        note(f"Collect, then: `msbctl observe {box.name}` to see what it used.")
+        if not args.yes and not confirm("turn observation mode on"):
+            return
+    # The REGISTRY, never the project file, and not edit_target(): sandbox.toml
+    # is committed, so writing "observe" there would hand everyone who clones
+    # the project a sandbox with no egress filtering — the one setting that must
+    # not travel. It is machine-local and temporary, like mounts and identity.
+    target = registry_path(box)
+    set_toml_key(target, "egress_mode", mode)
+    note(f"{box.name}: egress_mode = {mode}   ({tilde(target)})")
+    # Network settings are fixed when msb creates the sandbox, so this is inert
+    # until it is built again — exactly like `allow` and `mount`.
+    if args.rebuild:
+        cmd_rebuild(argparse.Namespace(name=box.name), config)
+    else:
+        note(f"takes effect when the sandbox is created: `msbctl rebuild {box.name}`")
+
+
+def _observe_report(box):
+    seen = observed_hosts(box.name)
+    logs = runtime_logs(box.name)
+    say(f"{box.name}  [egress: {box.egress_mode}]")
+    if not logs:
+        note(f"no runtime log under {tilde(os.path.join(MSB_HOME, 'sandboxes', box.name))}")
+        note("the sandbox has never been created, or msb keeps its state elsewhere")
+        return
+    note(f"from {tilde(logs[-1])}" + (f" (+{len(logs) - 1} rotated)" if len(logs) > 1 else ""))
+    if not box.observing:
+        note(f"{DIM}this sandbox is enforcing, so only what its rules already allow"
+             f" could appear here{RESET}")
+    if not seen:
+        note("nothing recorded yet — msb only writes these lines at --log-level debug,")
+        note(f"which is what observe mode turns on: `msbctl observe {box.name} on`")
+        # Still worth saying: these are logged at WARN, so they show up here
+        # even when nothing else does, and they are the one failure that looks
+        # exactly like a missing egress rule while being nothing of the kind.
+        report_secret_violations(box)
+        return
+
+    rules = box.net_rules()
+    rows = []
+    for (host, port), info in seen.items():
+        covered = rule_allows(rules, host, port)
+        rows.append((host, port or "?", str(info["hits"]), info["last"], covered))
+    # Uncovered first — that is the list you are here to read — then by traffic.
+    rows.sort(key=lambda r: (r[4], -int(r[2]), r[0]))
+
+    head = ("HOST", "PORT", "HITS", "LAST SEEN", "")
+    widths = [max(len(str(r[i])) for r in [head] + rows) for i in range(4)]
+    print(f"   {BOLD}" + "  ".join(h.ljust(w) for h, w in zip(head, widths)) + RESET)
+    for host, port, hits, last, covered in rows:
+        cells = "  ".join(c.ljust(w) for c, w in zip((host, port, hits, last), widths))
+        mark = f"{DIM}allowed{RESET}" if covered else f"{RED}NOT ALLOWED{RESET}"
+        print(f"   {cells}  {mark}")
+
+    # Before the allowlist advice: a blocked secret is NOT fixed by allowing
+    # anything, and a host can sit here marked "allowed" while every request to
+    # it is being killed. That reads as a contradiction unless this says so.
+    report_secret_violations(box)
+
+    missing = [r[0] for r in rows if not r[4]]
+    if any(r[1] == "?" for r in rows):
+        note("")
+        note(f"{DIM}? — seen only as a DNS lookup. msb logs no port for anything but"
+             f" HTTPS,{RESET}")
+        note(f"{DIM}    so the port is unknown; `msbctl allow` assumes 443.{RESET}")
+    note("")
+    if not missing:
+        note("every host reached is already covered by this sandbox's rules.")
+        if box.observing:
+            note(f"nothing left to collect: `msbctl observe {box.name} off --rebuild`")
+        return
+    note(f"{len(missing)} host(s) not covered by the current rules. To allow them:")
+    note(f"   msbctl allow {box.name} " + " ".join(dict.fromkeys(missing)))
+    note("Read that list before running it — it is what the sandbox reached, which")
+    note("is not the same as what it ought to reach.")
+    if box.observing:
+        note(f"Then: `msbctl observe {box.name} off --rebuild`")
+
+
 # Guest paths the manager owns. A folder mounted over or inside one of these
 # would shadow the project, the Claude state or podman's storage.
 RESERVED_GUEST = ("/work", "/root/.claude", "/opt/msb-profile", "/var/lib/containers",
@@ -2703,12 +3083,38 @@ def section_folders(box, config, ctx):
 
 
 def _summary_egress(box):
-    return f"{len(box.extra_rules)} extra rule(s), groups: {', '.join(box.rule_groups) or 'none'}"
+    prefix = "OBSERVED, NOT BLOCKED — " if box.observing else ""
+    return (f"{prefix}{len(box.extra_rules)} extra rule(s), "
+            f"groups: {', '.join(box.rule_groups) or 'none'}")
+
+
+MODE_LABELS = {
+    "enforce": "enforce   deny by default; only the rules below get through",
+    "observe": "observe   NOTHING IS BLOCKED; every host reached is recorded",
+}
 
 
 def section_egress(box, config, ctx):
     say("Egress rules")
     note("Rule groups are under 'Features & agents'. These are the extra, per-sandbox rules.")
+
+    # The mode comes first because it decides whether anything else here is even
+    # applied. See Sandbox.egress_mode: observe exists to find out what a
+    # sandbox needs, since msb will not tell you what it denied.
+    mode = {v: k for k, v in MODE_LABELS.items()}[
+        choose_one("egress mode", [MODE_LABELS[m] for m in EGRESS_MODES],
+                   EGRESS_MODES.index(box.egress_mode))]
+    if mode != box.egress_mode:
+        if mode == "observe":
+            warn("unrestricted egress until you switch back. Secrets stay bound to")
+            warn("their hosts, but anything the guest can read it can now send.")
+        # registry_path, not edit_target: see _observe_set — this one is
+        # machine-local on purpose and must never be committed into a project.
+        if set_toml_key(registry_path(box), "egress_mode", mode):
+            ctx["rebuild"].add("egress mode")
+            if mode == "observe":
+                note(f"after a rebuild, use it a while then `msbctl observe {box.name}`")
+
     current = list(box.extra_rules)
     keep = toggle_list("keep these rules", current, current) if current else []
     raw = ask("allow more (hosts, host:port or full rules, space-separated; blank for none)")
@@ -3158,8 +3564,16 @@ def cmd_show(args, config):
         note(f"{DIM}fixed at create time — `msbctl rebuild` to change{RESET}")
 
     say("Egress")
+    if box.observing:
+        # The loudest surface there is: this preview pane is what the picker
+        # shows for whatever row is under the cursor, so a sandbox left in
+        # observation mode announces it every time you look at the list.
+        note(f"{RED}{BOLD}OBSERVATION MODE — nothing is blocked{RESET}")
+        note(f"{RED}every host is reachable and is being recorded; "
+             f"`msbctl observe {box.name}` to read it{RESET}")
+        note(f"{DIM}the rules below are kept but NOT enforced{RESET}")
     note(f"groups     base + {', '.join(box.rule_groups) or '(none)'}")
-    note(f"private DNS answers {'allowed' if box.allow_private_dns else 'DROPPED (rebind protection on)'}")
+    note(f"private DNS answers {'allowed' if box.allow_private_dns or box.observing else 'DROPPED (rebind protection on)'}")
     for rule in box.net_rules():
         note(f"  {rule}")
 
@@ -4543,6 +4957,11 @@ def cmd_status(args, config):
             print(f"   as     {DIM}no identity — a repo without one cannot commit{RESET}")
         print(f"   image  {image_short(box.image_or_none())}")
         print(f"   dir    {tilde(box.project)}")
+        if box.observing:
+            # Unmissable in the sidebar: this one is not enforcing anything, and
+            # a sandbox silently left that way is the failure mode of the whole
+            # feature.
+            print(f"   {RED}{BOLD}egress OBSERVED, NOT BLOCKED{RESET}")
 
 
 # ----------------------------------------------------------------------- menu
@@ -4785,6 +5204,16 @@ def main():
     p.add_argument("targets", nargs="+", metavar="target")
     p.add_argument("--rebuild", action="store_true", help="rebuild now so it takes effect")
     p.set_defaults(func=cmd_allow)
+
+    p = sub.add_parser("observe", help="stop blocking a sandbox and record where it goes, "
+                                       "or read that record back")
+    p.add_argument("name")
+    p.add_argument("action", nargs="?", choices=["report", "on", "off"], default="report",
+                   help="report (default): the hosts reached so far; on/off: switch the mode")
+    p.add_argument("--rebuild", action="store_true", help="rebuild now so it takes effect")
+    p.add_argument("-y", "--yes", action="store_true",
+                   help="skip the confirmation when turning observation on")
+    p.set_defaults(func=cmd_observe)
 
     p = sub.add_parser("mount", help="add an extra host folder to a sandbox (read-only unless --rw)")
     p.add_argument("name")
