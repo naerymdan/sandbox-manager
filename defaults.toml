@@ -159,12 +159,6 @@ use_global_token = true
 base = [
     "allow@dns",
     "deny@public:tcp:80,deny@private:tcp:80",
-    # Claude Code contacts BOTH. api.anthropic.com carries inference;
-    # platform.claude.com is hit on startup, and without it the CLI refuses to
-    # start at all with "Unable to connect to Anthropic services", which reads
-    # as an outage rather than as a missing egress rule.
-    "allow@api.anthropic.com:tcp:443",
-    "allow@platform.claude.com:tcp:443",
     # The apt sources rewrite in bootstrap.sh is what makes this precise: it
     # moves apt to HTTPS before the first fetch, so the rule is enforced on the
     # SNI rather than on whichever mirror a plaintext request reached.
@@ -197,6 +191,10 @@ npm = [
 
 bun = ["allow@bun.sh:tcp:443"]
 
+# Claude Code contacts BOTH. api.anthropic.com carries inference;
+# platform.claude.com is hit on startup, and without it the CLI refuses to
+# start at all with "Unable to connect to Anthropic services", which reads
+# as an outage rather than as a missing egress rule.
 claude = [
     "allow@api.anthropic.com:tcp:443",
     "allow@platform.claude.com:tcp:443",
