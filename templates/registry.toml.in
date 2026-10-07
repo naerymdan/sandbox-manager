@@ -65,6 +65,9 @@ autostart = {{AUTOSTART}}
 # conf        = ".msb/dev.yaml"     # relative to project
 # rule_groups = ["github", "npm", "python"]
 # extra_rules = ["allow@mirror.example.com:tcp:443"]
+# volumes     = "old-name"          # prefix of the cache/container disk volumes;
+#                                   # `msbctl rename` sets it, since msb cannot
+#                                   # rename a volume. Defaults to the name.
 #
 # egress_mode = "observe"   # NOTHING IS BLOCKED; every host reached is recorded.
 #                           # For finding out what the rules above are missing,

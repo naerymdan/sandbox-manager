@@ -9,6 +9,8 @@
     msbctl start|stop <name>…         repeatable: acts on each in turn
     msbctl rebuild <name>         destroy and recreate; keeps ~/.claude state
     msbctl purge <name>           destroy, delete state, secret and registration
+    msbctl rename <name> <new>    new name; recreates it, everything else moves along
+    msbctl move <name> <dir>      point it at another project folder (then rebuild)
     msbctl update <name>… [-c what…] update claude / gh / gitleaks / bun / apt in place
     msbctl shell <name>           interactive shell, ssh-agent wired up
     msbctl keys <name>            choose which host ssh keys it can use
@@ -349,6 +351,10 @@ class Sandbox:
         self.identity_name = self._pick("identity", defaults.get("identity"))
 
         self.conf_path = os.path.join(self.project, self.conf)
+        # Disk volumes are named after the sandbox, but msb cannot rename a
+        # volume, so a renamed sandbox keeps its old prefix here (`volumes` in
+        # the registry entry) rather than losing its caches and images.
+        self.volume_prefix = self.entry.get("volumes") or name
         self.state = os.path.join(STATE_DIR, "claude", name)
         self.agent_sock = os.path.join(AGENT_DIR, f"{name}.sock")
 
@@ -365,11 +371,16 @@ class Sandbox:
         return True
 
     def cache_volume(self, key):
-        return f"{self.name}-cache-{key}"
+        return f"{self.volume_prefix}-cache-{key}"
 
     @property
     def containers_volume(self):
-        return f"{self.name}-containers"
+        return f"{self.volume_prefix}-containers"
+
+    def owned_volumes(self, vols=None):
+        """Names of the existing disk volumes that belong to this sandbox."""
+        return [n for n in (msb_volumes() if vols is None else vols)
+                if n.startswith(f"{self.volume_prefix}-cache-") or n == self.containers_volume]
 
     def named_disk_flags(self, volume, dest, size):
         """`--mount-named` for a disk volume that OUTLIVES the sandbox, so a rebuild
@@ -1723,8 +1734,7 @@ def cmd_purge(args, config):
     note("This deletes, in this order:")
     note(f"  the sandbox          {box.name}")
     note(f"  its Claude state     {tilde(box.state)}")
-    owned = [n for n in msb_volumes()
-             if n.startswith(f"{box.name}-cache-") or n == f"{box.name}-containers"]
+    owned = box.owned_volumes()
     if owned:
         note(f"  its disk volumes     {', '.join(owned)}  (package caches, container images)")
     if os.path.isfile(secret):
@@ -1751,6 +1761,168 @@ def cmd_purge(args, config):
     note(f"{box.name} purged")
     if box.repo:
         note(f"Revoke its PAT: https://github.com/settings/personal-access-tokens")
+
+
+# ------------------------------------------------------------- rename and move
+#
+# msb can rename neither a sandbox nor a volume, so a new name is a new VM: the
+# old one is removed and, if it existed, created again under the new name — the
+# cost of a rebuild. Everything msbctl itself keys by name moves with it; the
+# disk volumes stay where they are and the entry's `volumes` key keeps pointing
+# at them. A new project folder is a create-time mount, so that is a rebuild too.
+
+SANDBOX_NAME = re.compile(r"[a-z0-9][a-z0-9-]*")
+
+
+def name_problem(name, renaming=None):
+    """Why `name` cannot be given to a new (or the renamed) sandbox, or None."""
+    if not SANDBOX_NAME.fullmatch(name):
+        return "name must be lowercase letters, digits and dashes"
+    if name == renaming:
+        return f"it is already called {name}"
+    if os.path.exists(registry_path_for(name)):
+        return f"{name} is already registered ({tilde(registry_path_for(name))})"
+    # A renamed sandbox still owns volumes under its old name; a second sandbox
+    # taking that name would mount the same disks.
+    for other in registered():
+        if other != renaming and read_toml(registry_path_for(other)).get("volumes") == name:
+            return f"{name} is still the disk-volume prefix of {other} (it was renamed from it)"
+    if state_of(name) != "absent":
+        return f"msb already has a sandbox called {name} that msbctl does not manage"
+    return None
+
+
+def _follow_rename_in_comments(path, old, new):
+    """The entry's comments name the sandbox (`msbctl keys old`); keep them right.
+    Comment lines only, and only where a command or the header names it."""
+    with open(path, encoding="utf-8") as fh:
+        lines = fh.read().splitlines()
+    command = re.compile(rf"(msbctl [a-z-]+ (?:add |rm |ls )?){re.escape(old)}(?![\w.-])")
+    for i, line in enumerate(lines):
+        if line.lstrip().startswith("#"):
+            line = command.sub(rf"\g<1>{new}", line)
+            lines[i] = re.sub(rf"^# {re.escape(old)} — ", f"# {new} — ", line)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines) + "\n")
+
+
+def rename_sandbox(box, new):
+    """Move everything msbctl keeps under `box.name` to `new`, removing the old VM.
+    Returns whether there was a VM, so the caller can create it again."""
+    old = box.name
+    moves = [(os.path.join(SECRETS_DIR, f"{old}.env"), os.path.join(SECRETS_DIR, f"{new}.env")),
+             (box.state, os.path.join(STATE_DIR, "claude", new)),
+             (os.path.join(AGENT_DIR, f"{old}.log"), os.path.join(AGENT_DIR, f"{new}.log"))]
+    # Checked before anything is destroyed, so a refusal leaves it all as it was.
+    clash = [dst for src, dst in moves if os.path.exists(src) and os.path.exists(dst)]
+    if clash:
+        die(f"left over from an earlier {new}: {', '.join(tilde(p) for p in clash)} — "
+            "move it out of the way first")
+
+    existed = state_of(old) != "absent"
+    if existed:
+        run(["msb", "stop", old], check=False, quiet=True)
+        run(["msb", "rm", old], check=False, quiet=True)
+        if state_of(old) != "absent":
+            die(f"could not remove the sandbox {old} — nothing has been renamed")
+    stop_agent_filter(box)
+
+    entry = registry_path_for(new)
+    os.replace(registry_path(box), entry)
+    set_toml_key(entry, "name", new)
+    if box.owned_volumes():
+        # Pinned to the volumes that exist, or dropped when renamed back to them.
+        set_toml_key(entry, "volumes", None if box.volume_prefix == new else box.volume_prefix)
+    else:
+        set_toml_key(entry, "volumes", None)
+    _follow_rename_in_comments(entry, old, new)
+    for src, dst in moves:
+        if os.path.exists(src):
+            os.replace(src, dst)
+    cache = read_json(VERSIONS_CACHE)
+    if old in cache:
+        cache[new] = cache.pop(old)
+        write_json(VERSIONS_CACHE, cache)
+    return existed
+
+
+def explain_rename():
+    note("msb cannot rename a sandbox, so this removes it and creates it again under")
+    note("the new name, like a rebuild: packages installed by hand are lost, anything")
+    note("in bootstrap.sh comes back. Settings, secrets, the Claude state, package")
+    note("caches and container images all move with it.")
+
+
+def cmd_rename(args, config):
+    box = Sandbox(args.name, config)
+    problem = name_problem(args.new, renaming=box.name)
+    if problem:
+        die(problem)
+    say(f"Renaming {box.name} to {args.new}")
+    if state_of(box.name) != "absent":
+        explain_rename()
+        if not args.yes and not confirm(f"rename {box.name} to {args.new}?"):
+            return
+    existed = rename_sandbox(box, args.new)
+    note(f"renamed: {tilde(registry_path_for(args.new))}")
+    if existed:
+        box = Sandbox(args.new, config)
+        do_create(box)
+        print_one(box, msb_table())
+
+
+def move_project(box, raw, config):
+    """Point `box` at another project folder (typed as for `add`). True if it changed.
+    The old folder may already be gone: moving a checkout is the usual reason."""
+    project = resolve_project(raw, config)
+    if project == box.project:
+        note(f"{box.name} already uses {tilde(project)}")
+        return False
+    if not os.path.isdir(project):
+        die(f"not a directory: {tilde(project)}")
+
+    # The portable half of the config lives in the project. A clone of a repo
+    # that commits .msb/ brings it along; a bare folder needs it copied over.
+    old_msb, new_msb = os.path.join(box.project, ".msb"), os.path.join(project, ".msb")
+    if not os.path.isfile(os.path.join(project, box.conf)):
+        missing = ([f for f in sorted(os.listdir(old_msb))
+                    if not os.path.exists(os.path.join(new_msb, f))]
+                   if os.path.isdir(old_msb) else [])
+        if not missing:
+            die(f"{tilde(project)} has no {box.conf}, and there is none to copy from "
+                f"{tilde(box.project)} — `msbctl add` it as a new sandbox instead")
+        note(f"{tilde(project)} has no {box.conf}; the old folder has: {', '.join(missing)}")
+        if not confirm(f"copy {'it' if len(missing) == 1 else 'them'} over?"):
+            die("cancelled — nothing changed")
+        os.makedirs(new_msb, exist_ok=True)
+        for f in missing:
+            src = os.path.join(old_msb, f)
+            (shutil.copytree if os.path.isdir(src) else shutil.copy2)(src, os.path.join(new_msb, f))
+        note(f"copied into {tilde(new_msb)}")
+
+    path = registry_path(box)
+    set_toml_key(path, "project", project)
+    note(f"project    {tilde(project)}")
+    repo = github_repo(project)
+    if repo and repo != box.repo:
+        set_toml_key(path, "repo", repo)
+        note(f"repo       {repo}  (was {box.repo or 'none'})")
+        if read_env_file(os.path.join(SECRETS_DIR, f"{box.name}.env")).get("GH_TOKEN"):
+            warn(f"its GitHub token was made for {box.repo or 'another repo'} — "
+                 f"`msbctl edit {box.name}` → GitHub token to replace it")
+    return True
+
+
+def cmd_move(args, config):
+    box = Sandbox(args.name, config)
+    if not move_project(box, args.dir, config):
+        return
+    if state_of(box.name) == "absent":
+        note("not created yet, so it applies at first start")
+    elif args.rebuild or confirm(f"the folder is mounted at create time — rebuild {box.name} now?"):
+        cmd_rebuild(argparse.Namespace(name=box.name), config)
+    else:
+        note(f"until then it still sees the old folder: `msbctl rebuild {box.name}`")
 
 
 def cmd_shell(args, config):
@@ -3401,6 +3573,37 @@ def section_identity(box, config, ctx):
     set_toml_key(path, "autostart", auto == "yes")
 
 
+def _summary_place(box):
+    return f"{box.name}, {tilde(box.project)}"
+
+
+def section_place(box, config, ctx):
+    say("Name & project folder")
+    note("a bare name resolves as for `msbctl add`; / ~ ./ ../ are taken as written")
+    raw = ask("project folder", tilde(box.project))
+    if resolve_project(raw, config) != box.project and move_project(box, raw, config):
+        ctx["rebuild"].add("project folder")
+        box = Sandbox(box.name, config)
+    new = ask("sandbox name", box.name)
+    if new == box.name:
+        return
+    problem = name_problem(new, renaming=box.name)
+    if problem:
+        die(problem)
+    if state_of(box.name) != "absent":
+        explain_rename()
+        if not confirm(f"rename {box.name} to {new} now?"):
+            return
+    existed = rename_sandbox(box, new)
+    ctx["name"] = new
+    note(f"renamed to {new}")
+    if existed:
+        # A fresh create applies everything, including what was waiting for a rebuild.
+        do_create(Sandbox(new, config))
+        ctx["rebuild"].clear()
+        ctx["hand_edited"] = False
+
+
 def section_files(box, config, ctx):
     """Last resort and escape hatch: the files themselves, in a terminal editor."""
     while True:
@@ -3424,6 +3627,7 @@ def section_files(box, config, ctx):
 
 
 EDIT_SECTIONS = [
+    ("Name & folder", section_place, _summary_place),
     ("Features & agents", section_features, _summary_features),
     ("Resources", section_resources, _summary_resources),
     ("Package caches", section_caches, _summary_caches),
@@ -3494,6 +3698,7 @@ def cmd_edit(args, config):
             text = str(exc.code or "").replace("msbctl: ", "", 1).strip()
             if text and "cancelled" not in text:
                 warn(text)
+        name = ctx.get("name", name)            # "Name & folder" may have renamed it
 
     if not (ctx["rebuild"] or ctx["hand_edited"]):
         return
@@ -4497,8 +4702,7 @@ def msb_volumes():
 def remove_sandbox_volumes(box):
     """Delete this sandbox's cache and containers volumes. Only after the sandbox
     itself is gone: msb refuses to remove a volume that is attached."""
-    mine = [n for n in msb_volumes()
-            if n.startswith(f"{box.name}-cache-") or n == f"{box.name}-containers"]
+    mine = box.owned_volumes()
     for name in mine:
         run(["msb", "volume", "rm", name], check=False, quiet=True)
     return mine
@@ -4821,11 +5025,10 @@ def cmd_add(args, config):
         created = True
     note(f"project    {tilde(project)}" + ("   (created)" if created else ""))
     name = ask("sandbox name", os.path.basename(project))
-    if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", name):
-        die("name must be lowercase letters, digits and dashes")
+    problem = name_problem(name)
+    if problem:
+        die(problem)
     entry_path = os.path.join(REGISTRY_DIR, f"{name}.toml")
-    if os.path.exists(entry_path):
-        die(f"{name} is already registered ({tilde(entry_path)})")
 
     found = checkouts(project)
     repo = ask("GitHub repo (owner/name or URL, blank for none)",
@@ -5364,6 +5567,18 @@ def main():
     p.add_argument("names", nargs="+", metavar="name")
     p.add_argument("-y", "--yes", action="store_true", help="skip the prompt")
     p.set_defaults(func=cmd_purge)
+
+    p = sub.add_parser("rename", help="give a sandbox a new name (recreates it, keeps its state)")
+    p.add_argument("name")
+    p.add_argument("new", metavar="new-name")
+    p.add_argument("-y", "--yes", action="store_true", help="skip the prompt")
+    p.set_defaults(func=cmd_rename)
+
+    p = sub.add_parser("move", help="point a sandbox at another project folder (then rebuild)")
+    p.add_argument("name")
+    p.add_argument("dir", help="as for `add`: a bare name resolves under the workspaces")
+    p.add_argument("--rebuild", action="store_true", help="rebuild now so it takes effect")
+    p.set_defaults(func=cmd_move)
 
     p = sub.add_parser("config", help="show the merged configuration and where each value is from")
     p.set_defaults(func=cmd_config)

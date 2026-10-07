@@ -9,6 +9,7 @@ release notes.
 ## [Unreleased]
 
 ### Added
+- `msbctl rename <name> <new>` and `msbctl move <name> <dir>` (also `edit` → Name & folder) rename a sandbox or point it at another project folder; a rename recreates the VM and keeps settings, secrets, Claude state, caches and container images, a move needs a rebuild.
 - A git identity can name an ssh key to sign commits with (`setup` → Git identities); sandboxes using it sign through the filtered agent (and can verify their own signatures) while the key stays ticked in `msbctl keys`, which flags it and warns before you drop it. Existing sandboxes need a rebuild for `openssh-client` if `ssh-keygen` is missing.
 
 ## [0.1.1] - 2026-10-06
