@@ -9,6 +9,7 @@ release notes.
 ## [Unreleased]
 
 ### Added
+- Documentation site at https://naerymdan.github.io/sandbox-manager/: install, getting started, guides, command and configuration reference, with search and light/dark themes.
 - Sandboxes get `EDITOR=nano` (and nano itself), so Claude Code's `/memory`, `git commit` and friends open an editor instead of silently doing nothing; override it under `[env]`. Existing sandboxes need a rebuild.
 - Inside a project folder msbctl knows which sandbox you mean: leave the name out where it is the only argument (`msbctl shell`, `msbctl stop`), use `.` where more follows (`msbctl exec . make`, `msbctl allow . example.com`), or `msbctl exec -- cmd`; `shell` and `exec` start in the matching subfolder of `/work`.
 - `msbctl rename <name> <new>` and `msbctl move <name> <dir>` (also `edit` → Name & folder) rename a sandbox or point it at another project folder; a rename recreates the VM and keeps settings, secrets, Claude state, caches and container images, a move needs a rebuild.
