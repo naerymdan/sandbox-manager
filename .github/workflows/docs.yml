@@ -1,0 +1,62 @@
+name: docs
+
+# Builds docs/ with docs/build.py (stdlib Python, no dependencies) and deploys
+# it to GitHub Pages. Pull requests do not deploy: ci.yml's scripts/check.sh
+# already builds the site and fails on a broken link or an undocumented
+# command, so a PR that would break the docs is caught there.
+#
+# Needs Pages enabled with "GitHub Actions" as the source (Settings → Pages).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "assets/**"
+      - "CHANGELOG.md"
+      - "VERSION"
+      - "msbctl"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions: {}
+
+# One deployment at a time, and never cancel one halfway: a cancelled Pages
+# deploy can leave the previous site half-replaced.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The repository name, through env rather than inline: 404.html needs the
+      # absolute path the site is served under (/<repo>/).
+      - name: Build
+        env:
+          REPO_NAME: ${{ github.event.repository.name }}
+        run: python3 -I docs/build.py --check --out _site --base "/$REPO_NAME/"
+
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write      # publish the artifact
+      id-token: write   # prove to Pages that this workflow is the publisher
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

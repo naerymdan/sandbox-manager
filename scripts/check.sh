@@ -53,6 +53,18 @@ for f in defaults.toml .msb/sandbox.toml; do
 	fi
 done
 
+echo "docs"
+# Builds the site into a throwaway directory and fails on a broken internal link,
+# a missing anchor, or an msbctl subcommand with no section on the Commands page.
+docs_out=$(mktemp -d)
+if python3 -I docs/build.py --check --out "$docs_out" >/tmp/check.$$ 2>&1; then
+	ok "$(tail -n1 /tmp/check.$$)"
+else
+	bad "docs/build.py --check:"
+	sed 's/^/        /' /tmp/check.$$
+fi
+rm -rf "$docs_out" /tmp/check.$$
+
 echo "payload"
 # install.sh and scripts/package.sh each carry the list of what ships; if they
 # disagree, a package installs something different from a checkout.

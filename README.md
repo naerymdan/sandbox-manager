@@ -13,6 +13,8 @@ enter the VM, and one picker to start, stop, rebuild and update them all.
 Built for running coding agents against real repositories without giving them
 your network or your tokens.
 
+**Documentation: <https://naerymdan.github.io/sandbox-manager/>**
+
 ```
   ↑↓ choose   enter run   ^r refresh   esc quit
  ┌──────────────────────────────┬──────────────────────────────────────────┐
