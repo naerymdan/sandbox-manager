@@ -1,4 +1,8 @@
-# msb-manager
+<p align="center">
+  <img src="assets/msb-manager-mark-dotmatrix-dark.svg" alt="msb-manager logo: a dot-matrix sandbox" width="128">
+</p>
+
+<h1 align="center">msb-manager</h1>
 
 [![ci](https://github.com/runoverlabs/sandbox-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/runoverlabs/sandbox-manager/actions/workflows/ci.yml)
 [![codeql](https://github.com/runoverlabs/sandbox-manager/actions/workflows/codeql.yml/badge.svg)](https://github.com/runoverlabs/sandbox-manager/actions/workflows/codeql.yml)
@@ -15,17 +19,7 @@ your network or your tokens.
 
 **Documentation: <https://sandbox-manager.runoverlabs.dev/>**
 
-```
-  ↑↓ choose   enter run   ^r refresh   esc quit
- ┌──────────────────────────────┬──────────────────────────────────────────┐
- │▌register a new project       │ ● myproject  running                     │
- │ manage sandboxes             │    ram    1243M / 8192M   cpu  load 0.34 │
- │ setup                        │    as     yourhandle                     │
- │ edit your CLAUDE.md additions│           12345+yourhandle@users.nore…   │
- │ refresh version info         │    image  base:ubuntu                    │
- │ quit                         │    dir    ~/workspaces/myproject          │
- └──────────────────────────────┴──────────────────────────────────────────┘
-```
+<img src="docs/assets/screenshots/menu.svg" alt="msbctl: the main menu, with every sandbox's state, memory, git identity and folder beside it">
 
 ## What it actually does
 
@@ -52,6 +46,22 @@ project's transcripts.
 and resource limits live in the project's `.msb/`; host paths and tokens stay
 in `~/.config/msb/` and are never committed.
 
+## A look around
+
+These are the real screens, run against invented sandboxes;
+`scripts/screenshots/make.sh` regenerates them.
+
+**`msb-picker`**, which the desktop entry opens: every sandbox with its state and
+pending updates, one key per action, and everything about the one under the
+cursor — versions, environment, every egress rule, credentials.
+
+<img src="docs/assets/screenshots/picker.svg" alt="msb-picker: three sandboxes listed, with webshop's details, versions and egress rules in the right-hand pane">
+
+**`msbctl add`** asks for features, not firewall rules: each one brings the
+packages and the egress it needs.
+
+<img src="docs/assets/screenshots/add.svg" alt="msbctl add: the wizard's git identity, SSH key, coding agent and feature choices" width="640">
+
 ## Requirements
 
 - Linux with `/dev/kvm` — microsandbox is a libkrun microVM runtime, so this
@@ -68,7 +78,7 @@ in `~/.config/msb/` and are never committed.
 ## Install
 
 ```sh
-curl -fsSL https://github.com/<owner>/msb-manager/releases/latest/download/get.sh | sh
+curl -fsSL https://github.com/runoverlabs/sandbox-manager/releases/latest/download/get.sh | sh
 ```
 
 `get.sh` finds the latest release, downloads it, **verifies its sha256** against
@@ -92,7 +102,7 @@ msbctl self-update            # latest release; --version v0.2.0 for a specific 
 ### From a checkout (development)
 
 ```sh
-git clone https://github.com/<owner>/msb-manager
+git clone https://github.com/runoverlabs/sandbox-manager msb-manager
 cd msb-manager
 ./install.sh                  # --dev is implied inside a git checkout
 ```
@@ -142,7 +152,7 @@ tag, `VERSION` and changelog agree, builds the assets, attests them and
 publishes. To build the same assets locally (without publishing):
 
 ```sh
-scripts/package.sh --version 0.2.0 --repo <owner>/msb-manager   # writes ./dist
+scripts/package.sh --version 0.2.0 --repo runoverlabs/sandbox-manager   # writes ./dist
 ```
 
 `scripts/package.sh` copies an explicit list of files (not `.msb/`, `CLAUDE.md` or

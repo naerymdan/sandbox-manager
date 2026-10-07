@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="842" height="748" viewBox="0 0 842 748" role="img" aria-label="msbctl add api-gateway">
+<title>msbctl add api-gateway</title>
+<rect x="0.5" y="0.5" width="841" height="747" rx="10" fill="#0b0e0c" stroke="#243027"/>
+<path d="M0.5 34 V10.5 a10 10 0 0 1 10 -10 H831.5 a10 10 0 0 1 10 10 V34 Z" fill="#151a16"/>
+<line x1="0.5" y1="34" x2="841.5" y2="34" stroke="#243027"/>
+<circle cx="20" cy="17.0" r="6" fill="#ff5f57"/>
+<circle cx="40" cy="17.0" r="6" fill="#febc2e"/>
+<circle cx="60" cy="17.0" r="6" fill="#28c840"/>
+<text x="421.0" y="21.5" fill="#77847a" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace" font-size="13" text-anchor="middle">msbctl add api-gateway</text>
+<rect x="43.2" y="678.0" width="4.2" height="18.0" fill="#eef5ee"/>
+<g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace" font-size="14.0" xml:space="preserve">
+<text x="18.0" y="61.0" fill="#eef5ee" font-weight="bold" textLength="176.4" lengthAdjust="spacingAndGlyphs">== Register a sandbox</text>
+<text x="43.2" y="79.0" fill="#cfd8cf" textLength="336.0" lengthAdjust="spacingAndGlyphs">a bare name resolves under ~/workspaces;</text>
+<text x="43.2" y="97.0" fill="#cfd8cf" textLength="453.6" lengthAdjust="spacingAndGlyphs">a path starting with / ~ ./ or ../ is taken as written</text>
+<text x="43.2" y="115.0" fill="#cfd8cf" textLength="394.8" lengthAdjust="spacingAndGlyphs">project    ~/workspaces/api-gateway   (created)</text>
+<text x="43.2" y="133.0" fill="#cfd8cf" textLength="226.8" lengthAdjust="spacingAndGlyphs">sandbox name [api-gateway]:</text>
+<text x="43.2" y="151.0" fill="#cfd8cf" textLength="403.2" lengthAdjust="spacingAndGlyphs">GitHub repo (owner/name or URL, blank for none):</text>
+<text x="18.0" y="187.0" fill="#eef5ee" font-weight="bold" textLength="126.0" lengthAdjust="spacingAndGlyphs">== Git identity</text>
+<text x="60.0" y="205.0" fill="#cfd8cf" textLength="420.0" lengthAdjust="spacingAndGlyphs">work         Robin Fairweather &lt;robin@example.com&gt;</text>
+<text x="43.2" y="241.0" fill="#cfd8cf" textLength="529.2" lengthAdjust="spacingAndGlyphs">Applied with `git config --system` in the guest, so a repo that</text>
+<text x="43.2" y="259.0" fill="#cfd8cf" textLength="529.2" lengthAdjust="spacingAndGlyphs">carries its own user.email still wins. This is the fallback for</text>
+<text x="43.2" y="277.0" fill="#cfd8cf" textLength="546.0" lengthAdjust="spacingAndGlyphs">repos that have none, which otherwise cannot commit in a microVM.</text>
+<text x="43.2" y="295.0" fill="#cfd8cf" textLength="554.4" lengthAdjust="spacingAndGlyphs">Prefer the noreply form for anything that can reach a public repo.</text>
+<text x="43.2" y="313.0" fill="#cfd8cf" textLength="277.2" lengthAdjust="spacingAndGlyphs">identity (blank for none) [work]:</text>
+<text x="18.0" y="349.0" fill="#eef5ee" font-weight="bold" textLength="92.4" lengthAdjust="spacingAndGlyphs">== SSH keys</text>
+<text x="43.2" y="367.0" fill="#cfd8cf" textLength="571.2" lengthAdjust="spacingAndGlyphs">Which keys in your host ssh-agent this sandbox may use, for git over</text>
+<text x="43.2" y="385.0" fill="#cfd8cf" textLength="571.2" lengthAdjust="spacingAndGlyphs">ssh and for signing. Nothing is ticked by default: a sandbox gets no</text>
+<text x="43.2" y="403.0" fill="#cfd8cf" textLength="554.4" lengthAdjust="spacingAndGlyphs">key until you give it one. Change later with `msbctl keys &lt;name&gt;`.</text>
+<text x="43.2" y="421.0" fill="#cfd8cf" textLength="151.2" lengthAdjust="spacingAndGlyphs">keys: robin@laptop</text>
+<text x="18.0" y="457.0" fill="#eef5ee" font-weight="bold" textLength="134.4" lengthAdjust="spacingAndGlyphs">== Coding agents</text>
+<text x="43.2" y="475.0" fill="#cfd8cf" textLength="117.6" lengthAdjust="spacingAndGlyphs">agents: claude</text>
+<text x="18.0" y="511.0" fill="#eef5ee" font-weight="bold" textLength="92.4" lengthAdjust="spacingAndGlyphs">== Features</text>
+<text x="43.2" y="529.0" fill="#cfd8cf" textLength="554.4" lengthAdjust="spacingAndGlyphs">Each ticked feature installs what it needs and opens the egress it</text>
+<text x="43.2" y="547.0" fill="#cfd8cf" textLength="554.4" lengthAdjust="spacingAndGlyphs">needs. base (DNS, the :80 deny, Ubuntu mirrors) is always applied.</text>
+<text x="43.2" y="565.0" fill="#eef5ee" font-weight="bold" textLength="67.2" lengthAdjust="spacingAndGlyphs">features</text>
+<text x="60.0" y="583.0" fill="#cfd8cf" textLength="420.0" lengthAdjust="spacingAndGlyphs">[x] github   git over https/ssh and the GitHub API</text>
+<text x="60.0" y="601.0" fill="#cfd8cf" textLength="529.2" lengthAdjust="spacingAndGlyphs">[x] npm      npm registry and Node packages  (needed by claude)</text>
+<text x="60.0" y="619.0" fill="#cfd8cf" textLength="235.2" lengthAdjust="spacingAndGlyphs">[ ] bun      the bun runtime</text>
+<text x="60.0" y="637.0" fill="#cfd8cf" textLength="327.6" lengthAdjust="spacingAndGlyphs">[ ] gitleaks gitleaks, a secret scanner</text>
+<text x="60.0" y="655.0" fill="#cfd8cf" textLength="344.4" lengthAdjust="spacingAndGlyphs">[x] python   PyPI, venv/pip, flake8, mypy</text>
+<text x="60.0" y="673.0" fill="#cfd8cf" textLength="445.2" lengthAdjust="spacingAndGlyphs">[ ] rust     crates.io, rustc, cargo, clippy, rustfmt</text>
+<text x="60.0" y="691.0" fill="#eef5ee" font-weight="bold" textLength="487.2" lengthAdjust="spacingAndGlyphs">[x] go       the Go module proxy, go (vet, gofmt included)</text>
+<text x="60.0" y="709.0" fill="#cfd8cf" textLength="428.4" lengthAdjust="spacingAndGlyphs">[ ] podman   containers inside the sandbox (podman)</text>
+<text x="43.2" y="727.0" fill="#77847a" textLength="546.0" lengthAdjust="spacingAndGlyphs">↑↓ move   space toggle   a all   n none   enter done   esc cancel</text>
+</g></svg>
