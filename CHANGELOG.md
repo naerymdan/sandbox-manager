@@ -8,6 +8,8 @@ release notes.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-07
+
 ### Added
 - Documentation site at https://naerymdan.github.io/sandbox-manager/: install, getting started, guides, command and configuration reference, with search and light/dark themes; agents can read it through `llms.txt`, `llms-full.txt` or the Markdown copy beside each page.
 - Sandboxes get `EDITOR=nano` (and nano itself), so Claude Code's `/memory`, `git commit` and friends open an editor instead of silently doing nothing; override it under `[env]`. Existing sandboxes need a rebuild.
