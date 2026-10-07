@@ -9,6 +9,7 @@ release notes.
 ## [Unreleased]
 
 ### Added
+- Sandboxes get `EDITOR=nano` (and nano itself), so Claude Code's `/memory`, `git commit` and friends open an editor instead of silently doing nothing; override it under `[env]`. Existing sandboxes need a rebuild.
 - Inside a project folder msbctl knows which sandbox you mean: leave the name out where it is the only argument (`msbctl shell`, `msbctl stop`), use `.` where more follows (`msbctl exec . make`, `msbctl allow . example.com`), or `msbctl exec -- cmd`; `shell` and `exec` start in the matching subfolder of `/work`.
 - `msbctl rename <name> <new>` and `msbctl move <name> <dir>` (also `edit` → Name & folder) rename a sandbox or point it at another project folder; a rename recreates the VM and keeps settings, secrets, Claude state, caches and container images, a move needs a rebuild.
 - A git identity can name an ssh key to sign commits with (`setup` → Git identities); sandboxes using it sign through the filtered agent (and can verify their own signatures) while the key stays ticked in `msbctl keys`, which flags it and warns before you drop it. Existing sandboxes need a rebuild for `openssh-client` if `ssh-keygen` is missing.

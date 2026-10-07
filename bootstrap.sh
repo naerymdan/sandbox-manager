@@ -102,12 +102,13 @@ do_apt() {
 
 	# socat is the ssh-agent bridge. yamllint/shellcheck let an agent
 	# validate the YAML and shell it writes — from apt, not pip: PyPI is not in the
-	# default egress allowlist, so apt is the only route available.
+	# default egress allowlist, so apt is the only route available. nano is what
+	# EDITOR names in defaults.toml, so it must exist whatever the image is.
 	#
 	# shellcheck disable=SC2086 # deliberate word splitting: a package list
 	apt-get install -y -qq --no-install-recommends \
 		socat jq curl ca-certificates ripgrep fd-find tree unzip file \
-		yamllint shellcheck gnupg openssh-client $EXTRA_PACKAGES
+		yamllint shellcheck gnupg openssh-client nano $EXTRA_PACKAGES
 	command -v socat >/dev/null   # no socat, no agent bridge
 	# Debian/Ubuntu name the binary fdfind to avoid a clash; everyone else's
 	# docs and muscle memory say fd.

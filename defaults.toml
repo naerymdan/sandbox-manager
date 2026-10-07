@@ -127,6 +127,13 @@ CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY = "1"
 # Not Claude-specific — the cross-vendor opt-out convention, honoured by a
 # number of the CLIs a sandbox is likely to grow.
 DO_NOT_TRACK = "1"
+# A terminal editor for anything that launches one: Claude Code's /memory and
+# ctrl-g, `git commit`, crontab. With neither EDITOR nor VISUAL set, Claude Code
+# falls back to whatever it finds on PATH — in the devcontainers image that is
+# `code`, VS Code's launcher, which has no window to talk to inside the VM and
+# exits silently, so /memory appears to do nothing. nano is installed by
+# bootstrap.sh so this holds on any image. Override per project in [env].
+EDITOR = "nano"
 
 [versions]
 # Defaults for bootstrap.sh. A sandbox entry's [versions] table overrides these
