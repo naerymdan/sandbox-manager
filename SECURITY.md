@@ -8,7 +8,7 @@ mounts and agent filter grant.
 ## Reporting
 
 **Do not open a public issue.** Use GitHub's private report form:
-<https://github.com/naerymdan/sandbox-manager/security/advisories/new>
+<https://github.com/runoverlabs/sandbox-manager/security/advisories/new>
 
 Include what you did, what you expected to be refused, and what happened
 instead. A reproduction against a throwaway sandbox is ideal.
@@ -30,4 +30,4 @@ instead. A reproduction against a throwaway sandbox is ideal.
 ## Supported versions
 
 Only the latest release is supported. Release assets carry a build-provenance
-attestation: `gh attestation verify <file> --repo naerymdan/sandbox-manager`.
+attestation: `gh attestation verify <file> --repo runoverlabs/sandbox-manager`.

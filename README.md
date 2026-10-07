@@ -1,10 +1,10 @@
 # msb-manager
 
-[![ci](https://github.com/naerymdan/sandbox-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/naerymdan/sandbox-manager/actions/workflows/ci.yml)
-[![codeql](https://github.com/naerymdan/sandbox-manager/actions/workflows/codeql.yml/badge.svg)](https://github.com/naerymdan/sandbox-manager/actions/workflows/codeql.yml)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/naerymdan/sandbox-manager/badge)](https://scorecard.dev/viewer/?uri=github.com/naerymdan/sandbox-manager)
-[![release](https://img.shields.io/github/v/release/naerymdan/sandbox-manager)](https://github.com/naerymdan/sandbox-manager/releases/latest)
-[![licence](https://img.shields.io/github/license/naerymdan/sandbox-manager)](LICENSE)
+[![ci](https://github.com/runoverlabs/sandbox-manager/actions/workflows/ci.yml/badge.svg)](https://github.com/runoverlabs/sandbox-manager/actions/workflows/ci.yml)
+[![codeql](https://github.com/runoverlabs/sandbox-manager/actions/workflows/codeql.yml/badge.svg)](https://github.com/runoverlabs/sandbox-manager/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/runoverlabs/sandbox-manager/badge)](https://scorecard.dev/viewer/?uri=github.com/runoverlabs/sandbox-manager)
+[![release](https://img.shields.io/github/v/release/runoverlabs/sandbox-manager)](https://github.com/runoverlabs/sandbox-manager/releases/latest)
+[![licence](https://img.shields.io/github/license/runoverlabs/sandbox-manager)](LICENSE)
 
 Manage [microsandbox](https://github.com/microsandbox/microsandbox) microVMs as
 per-project agent sandboxes: deny-by-default egress, credentials that never
@@ -13,7 +13,7 @@ enter the VM, and one picker to start, stop, rebuild and update them all.
 Built for running coding agents against real repositories without giving them
 your network or your tokens.
 
-**Documentation: <https://naerymdan.github.io/sandbox-manager/>**
+**Documentation: <https://sandbox-manager.runoverlabs.dev/>**
 
 ```
   ↑↓ choose   enter run   ^r refresh   esc quit
@@ -125,8 +125,8 @@ repository's release workflow, of exactly which commit built which file. Check i
 yourself:
 
 ```sh
-gh attestation verify msb-manager-0.1.0.tar.gz --repo naerymdan/sandbox-manager \
-    --signer-workflow naerymdan/sandbox-manager/.github/workflows/release.yml
+gh attestation verify msb-manager-0.1.0.tar.gz --repo runoverlabs/sandbox-manager \
+    --signer-workflow runoverlabs/sandbox-manager/.github/workflows/release.yml
 ```
 
 `get.sh` and `msbctl self-update` run that check automatically when `gh` is

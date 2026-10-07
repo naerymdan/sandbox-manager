@@ -8,7 +8,7 @@
                                            # msbctl subcommand
     python3 docs/build.py --base /repo/    # absolute base, for 404.html only
     python3 docs/build.py --site-url URL   # where it is published (default: the
-                                           # repo's github.io address)
+                                           # project's custom domain)
 
 Pages are docs/content/*.md, each opening with a small front-matter block:
 
@@ -38,8 +38,8 @@ image) and JSON-LD on every page; sitemap.xml; and for agents, llms.txt (the
 llmstxt.org index), llms-full.txt (every page in one file) and a Markdown copy
 of each page beside its HTML (install.md beside install.html), linked from the
 page as rel=alternate. Those are the only absolute URLs, so they come from
---site-url. There is no robots.txt: for a project site it would sit under
-/<repo>/, and crawlers only read the one at the root of the host.
+--site-url. There is no robots.txt: everything is meant to be crawled, and a
+missing one already says so.
 """
 
 import argparse
@@ -56,10 +56,11 @@ CONTENT = os.path.join(HERE, "content")
 ASSETS = os.path.join(HERE, "assets")
 BRAND = os.path.join(ROOT, "assets")      # the logo files, shared with the repo
 
-REPO = os.environ.get("GITHUB_REPOSITORY") or "naerymdan/sandbox-manager"
+REPO = os.environ.get("GITHUB_REPOSITORY") or "runoverlabs/sandbox-manager"
 REPO_URL = f"https://github.com/{REPO}"
-_OWNER, _, _NAME = REPO.partition("/")
-SITE_URL = f"https://{_OWNER.lower()}.github.io/{_NAME}/"
+# Pages serves the site on its custom domain (Settings → Pages), at the root of
+# the host. A fork that publishes elsewhere passes --site-url.
+SITE_URL = "https://sandbox-manager.runoverlabs.dev/"
 TAGLINE = ("Run coding agents in per-project microVMs with deny-by-default egress, "
            "and credentials and SSH keys that never enter the VM.")
 SECTIONS = ["Start here", "Guides", "Reference", "Project"]
@@ -674,7 +675,7 @@ def check(pages):
 def main():
     parser = argparse.ArgumentParser(description="Build the msb-manager documentation site.")
     parser.add_argument("--out", default=os.path.join(HERE, "_site"))
-    parser.add_argument("--base", default="", help="absolute site path, e.g. /sandbox-manager/")
+    parser.add_argument("--base", default="", help="absolute site path, e.g. / or /sandbox-manager/")
     parser.add_argument("--site-url", default=SITE_URL,
                         help=f"the published address, for canonical links, the sitemap "
                              f"and llms.txt (default {SITE_URL})")

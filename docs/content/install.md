@@ -19,7 +19,7 @@ description: Requirements, the one-line installer, verifying a release, and inst
 ## One-line install
 
 ```console
-$ curl -fsSL https://github.com/naerymdan/sandbox-manager/releases/latest/download/get.sh | sh
+$ curl -fsSL https://github.com/runoverlabs/sandbox-manager/releases/latest/download/get.sh | sh
 ```
 
 `get.sh` finds the latest release, downloads it, **verifies its sha256** against
@@ -66,8 +66,8 @@ repository's release workflow, of exactly which commit built which file. You
 can check it yourself:
 
 ```console
-$ gh attestation verify msb-manager-0.2.0.tar.gz --repo naerymdan/sandbox-manager \
-    --signer-workflow naerymdan/sandbox-manager/.github/workflows/release.yml
+$ gh attestation verify msb-manager-0.2.0.tar.gz --repo runoverlabs/sandbox-manager \
+    --signer-workflow runoverlabs/sandbox-manager/.github/workflows/release.yml
 ```
 
 `get.sh` and `msbctl self-update` run this check automatically when `gh` is
@@ -77,7 +77,7 @@ checksum could be checked. Set `MSB_MANAGER_SKIP_ATTEST=1` to skip it.
 ## From a checkout (development)
 
 ```console
-$ git clone https://github.com/naerymdan/sandbox-manager msb-manager
+$ git clone https://github.com/runoverlabs/sandbox-manager msb-manager
 $ cd msb-manager
 $ ./install.sh                  # --dev is implied inside a git checkout
 ```
