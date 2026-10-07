@@ -37,6 +37,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `.msb/` — this repo's own sandbox policy (`sandbox.toml`, `dev.yaml`).
 - `spikes/NN-*.sh` — re-runnable PASS/FAIL scripts, one per mechanism the design relies on (SSH agent over vsock, mount ownership, per-port rules, persistence, hostname rules, memory reclaim, token placeholders, profile seeding, DNS rebind). Run one with `./spikes/07-claude-token-secret.sh`. Several need host-specific env vars (e.g. `ALLOW_HOST`, `ALLOW_PORT`) with no defaults, on purpose. Each must assert both the allowed and the denied half.
 
+## The current folder names a sandbox
+
+`sandbox_here()` resolves an omitted name (or `.`) to the registered sandbox whose `project` contains the cwd, deepest wins; the registry decides, never a `.msb/` alone, and two entries on one folder are an error. `main()` applies `resolve_here()` to `args.name`/`args.names` for every verb but `_agent-filter`, and rewrites `exec --` to `exec . --`. A name is optional (`nargs="?"`/`"*"`) ONLY where it is the sole positional; where another positional follows it stays required and `.` is the shorthand, so nothing is ever ambiguous (`observe on` must not mean the sandbox "on"). `guest_workdir()` maps the cwd to the same subfolder of `/work` for `shell`/`exec`.
+
 ## Configuration model
 
 Four TOML files, later wins:

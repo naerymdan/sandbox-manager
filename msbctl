@@ -28,6 +28,11 @@
     msbctl code <name>            open the editor on the project, on the host
     msbctl reclaim <name>         give the guest's page cache back to the host
 
+Inside a registered project folder the name can be left out where it is the
+only argument (`msbctl shell`, `msbctl stop`), and `.` stands for it where more
+follows (`msbctl exec . make`, `msbctl allow . example.com`); `msbctl exec --
+cmd` works too. shell and exec start in the same subfolder of /work.
+
 Runs on the HOST. Needs /dev/kvm, so not from inside a container.
 
 DEPENDENCIES ARE DELIBERATELY NONE — Python 3.11+ stdlib and the `msb` binary,
@@ -840,6 +845,79 @@ def registered():
     except FileNotFoundError:
         names = []
     return names
+
+
+# ------------------------------------------------- the sandbox of this folder
+#
+# Like docker compose, the current directory names a sandbox when none is given:
+# the registered one whose project CONTAINS it, the deepest if projects nest (as
+# git finds a repo). The registry decides, not a .msb/ folder: a clone of a
+# project that commits .msb/ is not registered on this machine, and the cloned
+# layout keeps .msb/ beside the checkout rather than inside it.
+#
+# Never a guess. A name may be OMITTED only where it is the sole positional
+# argument; where something follows it, `.` stands for it instead — `.` can
+# never be a sandbox name, so `msbctl observe on` cannot be misread as a
+# sandbox called "on". Two entries on the same folder are an error, not a pick.
+
+NAME_HELP = "sandbox name; omit it inside a registered project folder"
+NAMES_HELP = "sandbox names; none (or .) means the one for the current folder"
+DOT_HELP = "sandbox name, or . for the one whose project holds the current folder"
+
+
+def sandbox_here():
+    """(name, project) of the sandbox the current directory belongs to."""
+    cwd = os.path.realpath(os.getcwd())
+    found = []
+    for name in registered():
+        try:
+            raw = read_toml(registry_path_for(name)).get("project")
+        except SystemExit:                  # a broken entry is no reason to fail here
+            continue
+        if not raw:
+            continue
+        project = os.path.realpath(os.path.expanduser(raw))
+        if cwd == project or cwd.startswith(project.rstrip(os.sep) + os.sep):
+            found.append((len(project), name, project))
+    if found:
+        deepest = max(n for n, _, _ in found)
+        hits = [(name, project) for n, name, project in found if n == deepest]
+        if len(hits) > 1:
+            die(f"{tilde(hits[0][1])} is the project of several sandboxes "
+                f"({', '.join(n for n, _ in hits)}) — name the one you mean")
+        return hits[0]
+    # Nothing registered here. Say so in the most useful way.
+    probe = cwd
+    while True:
+        if os.path.isfile(os.path.join(probe, ".msb", "sandbox.toml")):
+            die(f"{tilde(probe)} has a .msb/ but no sandbox on this machine is "
+                f"registered for it — `msbctl add {tilde(probe)}`, or name one")
+        parent = os.path.dirname(probe)
+        if parent == probe:
+            break
+        probe = parent
+    die(f"{tilde(cwd)} is not inside a registered project — name the sandbox "
+        "(`msbctl ls` lists them)")
+
+
+def resolve_here(raw):
+    """`raw` unless it is omitted (None) or `.`, which mean this folder's sandbox."""
+    if raw not in (None, "."):
+        return raw
+    name, project = sandbox_here()
+    # On stderr, so `msbctl exec -- cmd` output stays clean in a pipe.
+    if sys.stderr.isatty():
+        print(f"{DIM}   {name}  ({tilde(project)}){RESET}", file=sys.stderr)
+    return name
+
+
+def guest_workdir(box):
+    """/work, or the same subfolder of it when the current directory is inside
+    the project — so `msbctl shell` from src/ lands in /work/src, like cd'ing."""
+    cwd = os.path.realpath(os.getcwd())
+    if cwd.startswith(box.project.rstrip(os.sep) + os.sep):
+        return "/work/" + os.path.relpath(cwd, box.project)
+    return "/work"
 
 
 # ------------------------------------------------------------------ per-boot
@@ -1930,7 +2008,7 @@ def cmd_shell(args, config):
     ensure_running(box)
     os.execvp("msb", ["msb", "exec", box.name, "--tty",
                       "-e", f"SSH_AUTH_SOCK={GUEST_AGENT_SOCK}",
-                      "-w", "/work", "--", "bash", "-l"])
+                      "-w", guest_workdir(box), "--", "bash", "-l"])
 
 
 def cmd_exec(args, config):
@@ -1943,7 +2021,7 @@ def cmd_exec(args, config):
     ensure_running(box)
     os.execvp("msb", ["msb", "exec", box.name,
                       "-e", f"SSH_AUTH_SOCK={GUEST_AGENT_SOCK}",
-                      "-w", "/work", "--", *command])
+                      "-w", guest_workdir(box), "--", *command])
 
 
 def cmd_reclaim(args, config):
@@ -5523,7 +5601,7 @@ def main():
     p.set_defaults(func=cmd_ls)
 
     p = sub.add_parser("entry", help="edit a sandbox's registry entry")
-    p.add_argument("name")
+    p.add_argument("name", nargs="?", help=NAME_HELP)
     p.set_defaults(func=cmd_entry)
 
     p = sub.add_parser("status", help="one block per sandbox; the menu sidebar")
@@ -5532,7 +5610,7 @@ def main():
     p.set_defaults(func=cmd_status)
 
     p = sub.add_parser("show", help="everything about one sandbox")
-    p.add_argument("name")
+    p.add_argument("name", nargs="?", help=NAME_HELP)
     p.set_defaults(func=cmd_show)
 
     # `names` (plural) marks a verb as repeatable: main() loops over them. The
@@ -5544,7 +5622,7 @@ def main():
             ("reclaim", cmd_reclaim, "return the guest page cache to the host"),
     ):
         p = sub.add_parser(verb, help=helptext)
-        p.add_argument("names", nargs="+", metavar="name")
+        p.add_argument("names", nargs="*", metavar="name", help=NAMES_HELP)
         p.set_defaults(func=func)
 
     # Single-name on purpose: each of these hands the terminal to one thing.
@@ -5553,29 +5631,29 @@ def main():
             ("shell", cmd_shell, "interactive shell"),
     ):
         p = sub.add_parser(verb, help=helptext)
-        p.add_argument("name")
+        p.add_argument("name", nargs="?", help=NAME_HELP)
         p.set_defaults(func=func)
 
     # Repeatable. rebuild does not prompt; purge still does, per sandbox, and
     # the confirmation names what it is about to destroy, so it must stay
     # per-sandbox rather than becoming one blanket yes for a multi-selection.
     p = sub.add_parser("rebuild", help="destroy and recreate")
-    p.add_argument("names", nargs="+", metavar="name")
+    p.add_argument("names", nargs="*", metavar="name", help=NAMES_HELP)
     p.set_defaults(func=cmd_rebuild)
 
     p = sub.add_parser("purge", help="destroy and deregister")
-    p.add_argument("names", nargs="+", metavar="name")
+    p.add_argument("names", nargs="*", metavar="name", help=NAMES_HELP)
     p.add_argument("-y", "--yes", action="store_true", help="skip the prompt")
     p.set_defaults(func=cmd_purge)
 
     p = sub.add_parser("rename", help="give a sandbox a new name (recreates it, keeps its state)")
-    p.add_argument("name")
+    p.add_argument("name", help=DOT_HELP)
     p.add_argument("new", metavar="new-name")
     p.add_argument("-y", "--yes", action="store_true", help="skip the prompt")
     p.set_defaults(func=cmd_rename)
 
     p = sub.add_parser("move", help="point a sandbox at another project folder (then rebuild)")
-    p.add_argument("name")
+    p.add_argument("name", help=DOT_HELP)
     p.add_argument("dir", help="as for `add`: a bare name resolves under the workspaces")
     p.add_argument("--rebuild", action="store_true", help="rebuild now so it takes effect")
     p.set_defaults(func=cmd_move)
@@ -5585,19 +5663,19 @@ def main():
 
     p = sub.add_parser("secret", help="add, remove or list extra secrets for a sandbox")
     p.add_argument("action", choices=["add", "rm", "ls"])
-    p.add_argument("name")
+    p.add_argument("name", help=DOT_HELP)
     p.add_argument("var", nargs="?", help="for rm: the variable name")
     p.set_defaults(func=cmd_secret)
 
     p = sub.add_parser("allow", help="add egress rules to a sandbox (host, host:port, or a full rule)")
-    p.add_argument("name")
+    p.add_argument("name", help=DOT_HELP)
     p.add_argument("targets", nargs="+", metavar="target")
     p.add_argument("--rebuild", action="store_true", help="rebuild now so it takes effect")
     p.set_defaults(func=cmd_allow)
 
     p = sub.add_parser("observe", help="stop blocking a sandbox and record where it goes, "
                                        "or read that record back")
-    p.add_argument("name")
+    p.add_argument("name", help=DOT_HELP)
     p.add_argument("action", nargs="?", choices=["report", "on", "off"], default="report",
                    help="report (default): the hosts reached so far; on/off: switch the mode")
     p.add_argument("--rebuild", action="store_true", help="rebuild now so it takes effect")
@@ -5606,14 +5684,14 @@ def main():
     p.set_defaults(func=cmd_observe)
 
     p = sub.add_parser("mount", help="add an extra host folder to a sandbox (read-only unless --rw)")
-    p.add_argument("name")
+    p.add_argument("name", help=DOT_HELP)
     p.add_argument("spec", metavar="SRC[:DEST][:ro|rw]")
     p.add_argument("--rw", action="store_true", help="read-write (default: read-only)")
     p.add_argument("--rebuild", action="store_true", help="rebuild now so it takes effect")
     p.set_defaults(func=cmd_mount)
 
     p = sub.add_parser("cache", help="show or empty a sandbox's package-cache disks")
-    p.add_argument("name")
+    p.add_argument("name", help=DOT_HELP)
     p.add_argument("action", nargs="?", choices=["ls", "clear"], default="ls")
     p.add_argument("key", nargs="?", help="for clear: one cache (default: all)")
     p.set_defaults(func=cmd_cache)
@@ -5627,11 +5705,11 @@ def main():
     p.set_defaults(func=cmd_setup)
 
     p = sub.add_parser("edit", help="edit an existing sandbox, one wizard section at a time")
-    p.add_argument("name")
+    p.add_argument("name", nargs="?", help=NAME_HELP)
     p.set_defaults(func=cmd_edit)
 
     p = sub.add_parser("resize", help="change cpus, memory or root disk of a sandbox, keeping its state")
-    p.add_argument("name")
+    p.add_argument("name", nargs="?", help=NAME_HELP)
     p.add_argument("--cpus", type=int)
     p.add_argument("--memory", metavar="SIZE")
     p.add_argument("--root-disk", metavar="SIZE", help="grow only")
@@ -5639,7 +5717,7 @@ def main():
     p.set_defaults(func=cmd_resize)
 
     p = sub.add_parser("keys", help="choose which ssh keys a sandbox can use")
-    p.add_argument("name")
+    p.add_argument("name", nargs="?", help=NAME_HELP)
     p.add_argument("--all", action="store_true",
                    help="remove the restriction: every host key")
     p.set_defaults(func=cmd_keys)
@@ -5649,18 +5727,24 @@ def main():
     p.set_defaults(func=cmd_agent_filter)
 
     p = sub.add_parser("exec", help="run a command in a sandbox")
-    p.add_argument("name")
+    p.add_argument("name", help=DOT_HELP)
     p.add_argument("command", nargs=argparse.REMAINDER)
     p.set_defaults(func=cmd_exec)
 
     p = sub.add_parser("update", help="update components in place")
-    p.add_argument("names", nargs="+", metavar="name")
+    p.add_argument("names", nargs="*", metavar="name", help=NAMES_HELP)
     p.add_argument("-c", "--components", nargs="+", default=["claude"],
                    metavar="component",
                    help="claude (default), gh, gitleaks, bun, apt")
     p.set_defaults(func=cmd_update)
 
-    args = parser.parse_args()
+    argv = sys.argv[1:]
+    # `msbctl exec -- cmd`: no name before the separator means this folder's
+    # sandbox. argparse would otherwise take the command's first word as a name.
+    verb = next((i for i, a in enumerate(argv) if not a.startswith("-")), None)
+    if verb is not None and argv[verb] == "exec" and argv[verb + 1:verb + 2] == ["--"]:
+        argv.insert(verb + 1, ".")
+    args = parser.parse_args(argv)
 
     # Checked for every subcommand, including `add`. Registering a project from
     # inside a container would write a registry entry naming a path that only
@@ -5680,6 +5764,11 @@ def main():
             if args.func not in (cmd_setup, cmd_self_update):   # these can still work with a broken config.toml
                 raise
             config = None
+        if args.func is not cmd_agent_filter:
+            if hasattr(args, "name"):
+                args.name = resolve_here(args.name)
+            if hasattr(args, "names"):
+                args.names = [resolve_here(n) for n in args.names or [None]]
         if not hasattr(args, "names"):
             args.func(args, config)
         else:
