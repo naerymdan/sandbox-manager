@@ -7,6 +7,8 @@
                                            # a missing anchor or an undocumented
                                            # msbctl subcommand
     python3 docs/build.py --base /repo/    # absolute base, for 404.html only
+    python3 docs/build.py --site-url URL   # where it is published (default: the
+                                           # repo's github.io address)
 
 Pages are docs/content/*.md, each opening with a small front-matter block:
 
@@ -29,6 +31,15 @@ Every link is RELATIVE, so the output works under any path GitHub Pages serves i
 from and straight off the disk (open _site/index.html). The one exception is
 404.html, which GitHub serves at whatever depth the missing URL had; it gets a
 <base> from --base.
+
+Search engines and agents get what they look for, all generated from the same
+pages: a canonical URL, Open Graph and Twitter card tags (with a social card
+image) and JSON-LD on every page; sitemap.xml; and for agents, llms.txt (the
+llmstxt.org index), llms-full.txt (every page in one file) and a Markdown copy
+of each page beside its HTML (install.md beside install.html), linked from the
+page as rel=alternate. Those are the only absolute URLs, so they come from
+--site-url. There is no robots.txt: for a project site it would sit under
+/<repo>/, and crawlers only read the one at the root of the host.
 """
 
 import argparse
@@ -47,7 +58,12 @@ BRAND = os.path.join(ROOT, "assets")      # the logo files, shared with the repo
 
 REPO = os.environ.get("GITHUB_REPOSITORY") or "naerymdan/sandbox-manager"
 REPO_URL = f"https://github.com/{REPO}"
+_OWNER, _, _NAME = REPO.partition("/")
+SITE_URL = f"https://{_OWNER.lower()}.github.io/{_NAME}/"
+TAGLINE = ("Run coding agents in per-project microVMs with deny-by-default egress, "
+           "and credentials and SSH keys that never enter the VM.")
 SECTIONS = ["Start here", "Guides", "Reference", "Project"]
+GENERATED = ("llms.txt", "llms-full.txt", "sitemap.xml")   # written beside the pages
 
 
 def esc(text):
@@ -363,7 +379,8 @@ def load_pages():
              for f in sorted(os.listdir(CONTENT)) if f.endswith(".md")]
     # The changelog is the repo's own file, not a copy; its H1 is the page title.
     changelog = read_page(os.path.join(ROOT, "CHANGELOG.md"), "changelog",
-                          {"title": "Changelog", "section": "Project", "order": "90"})
+                          {"title": "Changelog", "section": "Project", "order": "90",
+                           "description": "Every user-visible change to msb-manager, by release."})
     changelog.source = re.sub(r"^# .*\n", "", changelog.source, count=1)
     pages.append(changelog)
     pages.sort(key=lambda p: (SECTIONS.index(p.section), p.order, p.title))
@@ -447,6 +464,100 @@ def pager_html(pages, page):
     return f'<nav class="pager" aria-label="Pages">{left}{right}</nav>'
 
 
+def markdown_copy(page):
+    """The page as Markdown, for agents: its title as the H1, the front matter
+    dropped. Its relative links (other.md, assets/...) resolve against the other
+    copies, so it reads correctly on its own."""
+    lead = f"> {page.description}\n\n" if page.description else ""
+    return f"# {page.title}\n\n{lead}{page.source.strip()}\n"
+
+
+def json_ld(data):
+    # `</` would end the <script> early; JSON allows it escaped.
+    return ('<script type="application/ld+json">'
+            + json.dumps(data, separators=(",", ":")).replace("</", "<\\/") + "</script>")
+
+
+def meta_html(page, site_url, ver):
+    url = site_url + ("" if page.slug == "index" else page.href)
+    title = "msb-manager" if page.slug == "index" else f"{page.title} · msb-manager docs"
+    desc = page.description or TAGLINE
+    image = site_url + "assets/social-card.png"
+    website = {"@type": "WebSite", "@id": site_url + "#website", "name": "msb-manager docs",
+               "url": site_url, "inLanguage": "en"}
+    if page.slug == "index":
+        graph = [website, {
+            "@type": "SoftwareSourceCode", "name": "msb-manager", "description": TAGLINE,
+            "url": site_url, "codeRepository": REPO_URL, "programmingLanguage": "Python",
+            "runtimePlatform": "Linux", "license": "https://opensource.org/licenses/MIT",
+            "version": ver}]
+    else:
+        graph = [website, {
+            "@type": "TechArticle", "headline": page.title, "description": desc, "url": url,
+            "isPartOf": {"@id": site_url + "#website"}, "inLanguage": "en",
+            "about": {"@type": "SoftwareSourceCode", "name": "msb-manager",
+                      "codeRepository": REPO_URL}},
+            {"@type": "BreadcrumbList", "itemListElement": [
+                {"@type": "ListItem", "position": 1, "name": "msb-manager docs", "item": site_url},
+                {"@type": "ListItem", "position": 2, "name": page.title, "item": url}]}]
+    tags = [
+        f'<link rel="canonical" href="{esc(url)}">',
+        f'<link rel="alternate" type="text/markdown" href="{page.slug}.md" title="This page as Markdown">',
+        '<meta name="theme-color" content="#0b0e0c" media="(prefers-color-scheme: dark)">',
+        '<meta name="theme-color" content="#fbfaf4" media="(prefers-color-scheme: light)">',
+        '<meta property="og:type" content="website">' if page.slug == "index"
+        else '<meta property="og:type" content="article">',
+        '<meta property="og:site_name" content="msb-manager docs">',
+        f'<meta property="og:title" content="{esc(title)}">',
+        f'<meta property="og:description" content="{esc(desc)}">',
+        f'<meta property="og:url" content="{esc(url)}">',
+        f'<meta property="og:image" content="{esc(image)}">',
+        '<meta property="og:image:width" content="1200">',
+        '<meta property="og:image:height" content="630">',
+        '<meta property="og:image:alt" content="msb-manager: coding agents in per-project microVMs">',
+        '<meta name="twitter:card" content="summary_large_image">',
+        json_ld({"@context": "https://schema.org", "@graph": graph}),
+    ]
+    return "\n".join(tags)
+
+
+def llms_txt(pages, site_url):
+    """llmstxt.org: an H1, a one-line summary, then sections of links to the
+    Markdown copies. The changelog goes under "Optional", the part an agent
+    with little room may skip."""
+    out = ["# msb-manager", "", f"> {TAGLINE}", "",
+           "msb-manager is a single-file, dependency-free Python CLI (`msbctl`) around "
+           "microsandbox (`msb`). The Markdown pages below are the full documentation; "
+           f"`{site_url}llms-full.txt` is all of them in one file. Source: {REPO_URL}", ""]
+    optional = [p for p in pages if p.slug == "changelog"]
+    for section in SECTIONS:
+        members = [p for p in pages if p.section == section and p not in optional]
+        if members:
+            out.append(f"## {section}\n")
+            out += [f"- [{p.title}]({site_url}{p.slug}.md)"
+                    + (f": {p.description}" if p.description else "") for p in members]
+            out.append("")
+    if optional:
+        out.append("## Optional\n")
+        out += [f"- [{p.title}]({site_url}{p.slug}.md): {p.description}" for p in optional]
+        out.append("")
+    return "\n".join(out)
+
+
+def llms_full_txt(pages, site_url):
+    parts = [f"# msb-manager documentation\n\n> {TAGLINE}\n\nSource: {REPO_URL}\n"]
+    for p in pages:
+        parts.append(f"<!-- {site_url}{p.href} -->\n" + markdown_copy(p))
+    return "\n---\n\n".join(parts)
+
+
+def sitemap_xml(pages, site_url):
+    urls = "".join(f"<url><loc>{esc(site_url + ('' if p.slug == 'index' else p.href))}</loc></url>"
+                   for p in pages)
+    return ('<?xml version="1.0" encoding="UTF-8"?>\n'
+            f'<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{urls}</urlset>\n')
+
+
 def render_template(**values):
     with open(os.path.join(HERE, "template.html"), encoding="utf-8") as fh:
         text = fh.read()
@@ -466,7 +577,8 @@ def version():
         return "dev"
 
 
-def build(out, base=""):
+def build(out, base="", site_url=SITE_URL):
+    site_url = site_url.rstrip("/") + "/"
     pages = load_pages()
     bodies = {p.slug: render_blocks(p.source.splitlines(), p) for p in pages}
 
@@ -484,7 +596,8 @@ def build(out, base=""):
             **common,
             TITLE=esc(page.title if page.slug != "index" else "msb-manager"),
             HEADING=esc(page.title),
-            DESCRIPTION=esc(page.description or "msb-manager documentation"),
+            DESCRIPTION=esc(page.description or TAGLINE),
+            META=meta_html(page, site_url, ver),
             NAV=nav_html(pages, page),
             TOC=toc_html(page),
             BODY=bodies[page.slug],
@@ -492,11 +605,20 @@ def build(out, base=""):
             EDIT_URL=esc(page.edit_url))
         with open(os.path.join(out, page.href), "w", encoding="utf-8") as fh:
             fh.write(page_html)
+        with open(os.path.join(out, f"{page.slug}.md"), "w", encoding="utf-8") as fh:
+            fh.write(markdown_copy(page))
+
+    for name, text in zip(GENERATED, (llms_txt(pages, site_url),
+                                      llms_full_txt(pages, site_url),
+                                      sitemap_xml(pages, site_url))):
+        with open(os.path.join(out, name), "w", encoding="utf-8") as fh:
+            fh.write(text)
 
     missing = render_template(
         **{**common, "BASE": f'<base href="{esc(base)}">' if base else ""},
         TITLE="not found", HEADING="command not found",
         DESCRIPTION="Page not found",
+        META='<meta name="robots" content="noindex">',
         NAV=nav_html(pages, None), TOC="",
         BODY=('<div class="term"><div class="term-bar"><span class="dots" aria-hidden="true">'
               '<i></i><i></i><i></i></span><span class="term-title">terminal</span></div>'
@@ -533,10 +655,12 @@ def check(pages):
     for page in pages:
         for target, anchor in page.links:
             dest = by_href.get(target)
-            if dest is None:
+            if dest is None and target not in GENERATED:
                 problems.append(f"{page.slug}: link to missing page {target}")
             elif anchor and anchor not in dest.anchors:
                 problems.append(f"{page.slug}: link to missing anchor {target}#{anchor}")
+        if not page.description:
+            problems.append(f"{page.slug}: no description (search results and link previews show it)")
     commands = by_href.get("commands.html")
     if commands is None:
         problems.append("no commands page")
@@ -551,10 +675,13 @@ def main():
     parser = argparse.ArgumentParser(description="Build the msb-manager documentation site.")
     parser.add_argument("--out", default=os.path.join(HERE, "_site"))
     parser.add_argument("--base", default="", help="absolute site path, e.g. /sandbox-manager/")
+    parser.add_argument("--site-url", default=SITE_URL,
+                        help=f"the published address, for canonical links, the sitemap "
+                             f"and llms.txt (default {SITE_URL})")
     parser.add_argument("--check", action="store_true",
                         help="fail on broken links, anchors or undocumented commands")
     args = parser.parse_args()
-    pages = build(args.out, args.base)
+    pages = build(args.out, args.base, args.site_url)
     if args.check:
         problems = check(pages)
         if problems:
