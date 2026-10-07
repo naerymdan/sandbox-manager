@@ -7,14 +7,14 @@ description: Working on msb-manager: the checks, the rules, the spikes, the docs
 
 Issues and PRs are welcome, especially from anyone on a different distro or a
 newer `msb`. Read
-[`CLAUDE.md`](https://github.com/naerymdan/sandbox-manager/blob/main/CLAUDE.md)
+[`CLAUDE.md`](https://github.com/runoverlabs/sandbox-manager/blob/main/CLAUDE.md)
 in the repo first: despite the name, it's the design guide for humans and agents
 alike, and it records the failure modes that aren't obvious.
 
 ## Getting set up
 
 ```console
-$ git clone https://github.com/naerymdan/sandbox-manager msb-manager
+$ git clone https://github.com/runoverlabs/sandbox-manager msb-manager
 $ cd msb-manager
 $ ./install.sh                 # dev mode: the commands link into this checkout
 ```
@@ -119,7 +119,7 @@ It builds the assets, attests them and publishes them. Nothing is published by
 hand. To build the same assets locally without publishing:
 
 ```console
-$ scripts/package.sh --version 0.2.0 --repo naerymdan/sandbox-manager   # writes ./dist
+$ scripts/package.sh --version 0.2.0 --repo runoverlabs/sandbox-manager   # writes ./dist
 ```
 
 ## Security
@@ -127,5 +127,5 @@ $ scripts/package.sh --version 0.2.0 --repo naerymdan/sandbox-manager   # writes
 A way around the egress rules, a credential readable from inside the guest, or
 a leak through the agent filter is a vulnerability. Report it privately, as
 described in
-[SECURITY.md](https://github.com/naerymdan/sandbox-manager/blob/main/SECURITY.md),
+[SECURITY.md](https://github.com/runoverlabs/sandbox-manager/blob/main/SECURITY.md),
 not in a public issue.

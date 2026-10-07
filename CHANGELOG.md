@@ -8,6 +8,9 @@ release notes.
 
 ## [Unreleased]
 
+### Changed
+- The project moved to https://github.com/runoverlabs/sandbox-manager and its documentation to https://sandbox-manager.runoverlabs.dev/; old GitHub links and existing installs keep working through GitHub's redirects, but the old github.io docs address does not.
+
 ## [0.2.0] - 2026-10-07
 
 ### Added
