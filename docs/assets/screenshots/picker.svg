@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1464" height="676" viewBox="0 0 1464 676" role="img" aria-label="msb-picker — manage sandboxes">
+<title>msb-picker — manage sandboxes</title>
+<rect x="0.5" y="0.5" width="1463" height="675" rx="10" fill="#0b0e0c" stroke="#243027"/>
+<path d="M0.5 34 V10.5 a10 10 0 0 1 10 -10 H1453.5 a10 10 0 0 1 10 10 V34 Z" fill="#151a16"/>
+<line x1="0.5" y1="34" x2="1463.5" y2="34" stroke="#243027"/>
+<circle cx="20" cy="17.0" r="6" fill="#ff5f57"/>
+<circle cx="40" cy="17.0" r="6" fill="#febc2e"/>
+<circle cx="60" cy="17.0" r="6" fill="#28c840"/>
+<text x="732.0" y="21.5" fill="#77847a" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace" font-size="13" text-anchor="middle">msb-picker — manage sandboxes</text>
+<rect x="1404.0" y="48.0" width="33.6" height="18.0" fill="#e3b341"/>
+<rect x="18.0" y="138.0" width="4.2" height="18.0" fill="#77847a"/>
+<rect x="18.0" y="156.0" width="4.2" height="18.0" fill="#77847a"/>
+<rect x="18.0" y="174.0" width="487.2" height="18.0" fill="#1d2a21"/>
+<rect x="18.0" y="174.0" width="4.2" height="18.0" fill="#ff7b72"/>
+<path d="M568.2 48.0V66.0M1441.8 48.0V66.0M568.2 66.0V84.0M1441.8 66.0V84.0M568.2 84.0V102.0M1441.8 84.0V102.0M568.2 102.0V120.0M1441.8 102.0V120.0M568.2 120.0V138.0M1441.8 120.0V138.0M568.2 138.0V156.0M1441.8 138.0V156.0M568.2 156.0V174.0M1441.8 156.0V174.0M568.2 174.0V192.0M1441.8 174.0V192.0M568.2 192.0V210.0M1441.8 192.0V210.0M568.2 210.0V228.0M1441.8 210.0V228.0M568.2 228.0V246.0M1441.8 228.0V246.0M568.2 246.0V264.0M1441.8 246.0V264.0M568.2 264.0V282.0M1441.8 264.0V282.0M568.2 282.0V300.0M1441.8 282.0V300.0M568.2 300.0V318.0M1441.8 300.0V318.0M568.2 318.0V336.0M1441.8 318.0V336.0M568.2 336.0V354.0M1441.8 336.0V354.0M568.2 354.0V372.0M1441.8 354.0V372.0M568.2 372.0V390.0M1441.8 372.0V390.0M568.2 390.0V408.0M1441.8 390.0V408.0M568.2 408.0V426.0M1441.8 408.0V426.0M568.2 426.0V444.0M568.2 444.0V462.0M568.2 462.0V480.0M568.2 480.0V498.0M568.2 498.0V516.0M568.2 516.0V534.0M568.2 534.0V552.0M568.2 552.0V570.0M568.2 570.0V588.0M568.2 588.0V606.0M568.2 606.0V624.0M568.2 624.0V642.0M568.2 642.0V660.0" stroke="#77847a" stroke-width="1.2" fill="none"/>
+<g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace" font-size="14.0" xml:space="preserve">
+<text x="34.8" y="61.0" fill="#6cc3f5" textLength="462.0" lengthAdjust="spacingAndGlyphs">enter edit   t shell    s start    x stop     l reclaim</text>
+<text x="1404.0" y="61.0" fill="#0b0e0c" textLength="33.6" lengthAdjust="spacingAndGlyphs">1/53</text>
+<text x="34.8" y="79.0" fill="#6cc3f5" textLength="344.4" lengthAdjust="spacingAndGlyphs">u update     f refresh  n add new  e edit</text>
+<text x="580.8" y="79.0" fill="#eef5ee" font-weight="bold" textLength="176.4" lengthAdjust="spacingAndGlyphs">== webshop  [running]</text>
+<text x="34.8" y="97.0" fill="#6cc3f5" textLength="520.8" lengthAdjust="spacingAndGlyphs">R rebuild    D purge    (capitals: they destroy; rebuild doe··</text>
+<text x="606.0" y="97.0" fill="#cfd8cf" textLength="260.4" lengthAdjust="spacingAndGlyphs">project    ~/workspaces/webshop</text>
+<text x="34.8" y="115.0" fill="#6cc3f5" textLength="310.8" lengthAdjust="spacingAndGlyphs">space select  a all  j/k move  q quit</text>
+<text x="606.0" y="115.0" fill="#cfd8cf" textLength="193.2" lengthAdjust="spacingAndGlyphs">repo       acme/webshop</text>
+<text x="34.8" y="133.0" fill="#6cc3f5" textLength="520.8" lengthAdjust="spacingAndGlyphs">start/stop/rebuild/update/purge/reclaim act on every selecte··</text>
+<text x="606.0" y="133.0" fill="#cfd8cf" textLength="201.6" lengthAdjust="spacingAndGlyphs">conf       .msb/dev.yaml</text>
+<text x="34.8" y="151.0" fill="#cfd8cf" textLength="453.6" lengthAdjust="spacingAndGlyphs">infra         stopped  claude,gh    ~/workspaces/infra</text>
+<text x="606.0" y="151.0" fill="#cfd8cf" textLength="453.6" lengthAdjust="spacingAndGlyphs">image      mcr.microsoft.com/devcontainers/base:ubuntu</text>
+<text x="34.8" y="169.0" fill="#cfd8cf" textLength="512.4" lengthAdjust="spacingAndGlyphs">ml-notebooks  running  -            ~/workspaces/ml-notebooks</text>
+<text x="606.0" y="169.0" fill="#cfd8cf" textLength="319.2" lengthAdjust="spacingAndGlyphs">resources  4 cpu, 8G ceiling, 16G disk</text>
+<text x="34.8" y="187.0" fill="#eef5ee" font-weight="bold" textLength="470.4" lengthAdjust="spacingAndGlyphs">webshop       running  claude,node  ~/workspaces/webshop</text>
+<text x="606.0" y="187.0" fill="#cfd8cf" textLength="117.6" lengthAdjust="spacingAndGlyphs">autostart  yes</text>
+<text x="580.8" y="223.0" fill="#eef5ee" font-weight="bold" textLength="92.4" lengthAdjust="spacingAndGlyphs">== Versions</text>
+<text x="606.0" y="241.0" fill="#cfd8cf" textLength="420.0" lengthAdjust="spacingAndGlyphs">claude     2.4.1                  -&gt; 2.4.3  UPDATE</text>
+<text x="606.0" y="259.0" fill="#cfd8cf" textLength="142.8" lengthAdjust="spacingAndGlyphs">gh         2.81.0</text>
+<text x="891.6" y="259.0" fill="#7ee787" textLength="84.0" lengthAdjust="spacingAndGlyphs">up to date</text>
+<text x="606.0" y="277.0" fill="#cfd8cf" textLength="193.2" lengthAdjust="spacingAndGlyphs">image      ubuntu-24.04</text>
+<text x="891.6" y="277.0" fill="#7ee787" textLength="84.0" lengthAdjust="spacingAndGlyphs">up to date</text>
+<text x="606.0" y="295.0" fill="#cfd8cf" textLength="436.8" lengthAdjust="spacingAndGlyphs">node       24.9.0                 -&gt; 24.10.0  UPDATE</text>
+<text x="606.0" y="313.0" fill="#77847a" textLength="193.2" lengthAdjust="spacingAndGlyphs">probed 2026-10-07 09:12</text>
+<text x="580.8" y="349.0" fill="#eef5ee" font-weight="bold" textLength="117.6" lengthAdjust="spacingAndGlyphs">== Environment</text>
+<text x="622.8" y="367.0" fill="#cfd8cf" textLength="310.8" lengthAdjust="spacingAndGlyphs">CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY=1</text>
+<text x="622.8" y="385.0" fill="#cfd8cf" textLength="352.8" lengthAdjust="spacingAndGlyphs">CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1</text>
+<text x="622.8" y="403.0" fill="#cfd8cf" textLength="210.0" lengthAdjust="spacingAndGlyphs">DISABLE_ERROR_REPORTING=1</text>
+<text x="622.8" y="421.0" fill="#cfd8cf" textLength="218.4" lengthAdjust="spacingAndGlyphs">DISABLE_FEEDBACK_COMMAND=1</text>
+<text x="622.8" y="439.0" fill="#cfd8cf" textLength="159.6" lengthAdjust="spacingAndGlyphs">DISABLE_TELEMETRY=1</text>
+<text x="622.8" y="457.0" fill="#cfd8cf" textLength="117.6" lengthAdjust="spacingAndGlyphs">DO_NOT_TRACK=1</text>
+<text x="622.8" y="475.0" fill="#cfd8cf" textLength="92.4" lengthAdjust="spacingAndGlyphs">EDITOR=nano</text>
+<text x="606.0" y="493.0" fill="#77847a" textLength="411.6" lengthAdjust="spacingAndGlyphs">fixed at create time — `msbctl rebuild` to change</text>
+<text x="580.8" y="529.0" fill="#eef5ee" font-weight="bold" textLength="75.6" lengthAdjust="spacingAndGlyphs">== Egress</text>
+<text x="606.0" y="547.0" fill="#cfd8cf" textLength="310.8" lengthAdjust="spacingAndGlyphs">groups     base + github, npm, claude</text>
+<text x="606.0" y="565.0" fill="#cfd8cf" textLength="420.0" lengthAdjust="spacingAndGlyphs">private DNS answers DROPPED (rebind protection on)</text>
+<text x="622.8" y="583.0" fill="#cfd8cf" textLength="75.6" lengthAdjust="spacingAndGlyphs">allow@dns</text>
+<text x="622.8" y="601.0" fill="#cfd8cf" textLength="319.2" lengthAdjust="spacingAndGlyphs">deny@public:tcp:80,deny@private:tcp:80</text>
+<text x="622.8" y="619.0" fill="#cfd8cf" textLength="218.4" lengthAdjust="spacingAndGlyphs">allow@*.ubuntu.com:tcp:443</text>
+<text x="622.8" y="637.0" fill="#cfd8cf" textLength="201.6" lengthAdjust="spacingAndGlyphs">allow@github.com:tcp:443</text>
+<text x="622.8" y="655.0" fill="#cfd8cf" textLength="193.2" lengthAdjust="spacingAndGlyphs">allow@github.com:tcp:22</text>
+</g></svg>

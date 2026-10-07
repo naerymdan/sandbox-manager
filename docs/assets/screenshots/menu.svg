@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1212" height="460" viewBox="0 0 1212 460" role="img" aria-label="msbctl">
+<title>msbctl</title>
+<rect x="0.5" y="0.5" width="1211" height="459" rx="10" fill="#0b0e0c" stroke="#243027"/>
+<path d="M0.5 34 V10.5 a10 10 0 0 1 10 -10 H1201.5 a10 10 0 0 1 10 10 V34 Z" fill="#151a16"/>
+<line x1="0.5" y1="34" x2="1211.5" y2="34" stroke="#243027"/>
+<circle cx="20" cy="17.0" r="6" fill="#ff5f57"/>
+<circle cx="40" cy="17.0" r="6" fill="#febc2e"/>
+<circle cx="60" cy="17.0" r="6" fill="#28c840"/>
+<text x="606.0" y="21.5" fill="#77847a" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace" font-size="13" text-anchor="middle">msbctl</text>
+<rect x="18.0" y="102.0" width="201.6" height="18.0" fill="#1d2a21"/>
+<rect x="18.0" y="102.0" width="4.2" height="18.0" fill="#ff7b72"/>
+<rect x="18.0" y="120.0" width="4.2" height="18.0" fill="#77847a"/>
+<rect x="18.0" y="138.0" width="4.2" height="18.0" fill="#77847a"/>
+<rect x="18.0" y="156.0" width="4.2" height="18.0" fill="#77847a"/>
+<rect x="18.0" y="174.0" width="4.2" height="18.0" fill="#77847a"/>
+<rect x="18.0" y="192.0" width="4.2" height="18.0" fill="#77847a"/>
+<path d="M543.0 48.0V66.0M543.0 66.0V84.0M543.0 84.0V102.0M543.0 102.0V120.0M543.0 120.0V138.0M543.0 138.0V156.0M543.0 156.0V174.0M543.0 174.0V192.0M543.0 192.0V210.0M543.0 210.0V228.0M543.0 228.0V246.0M543.0 246.0V264.0M543.0 264.0V282.0M543.0 282.0V300.0M543.0 300.0V318.0M543.0 318.0V336.0M543.0 336.0V354.0M543.0 354.0V372.0M543.0 372.0V390.0M543.0 390.0V408.0M543.0 408.0V426.0M543.0 426.0V444.0" stroke="#77847a" stroke-width="1.2" fill="none"/>
+<path d="M18.0 93.0H26.4M26.4 93.0H34.8M34.8 93.0H43.2M43.2 93.0H51.6M51.6 93.0H60.0M60.0 93.0H68.4M68.4 93.0H76.8M76.8 93.0H85.2M85.2 93.0H93.6M93.6 93.0H102.0M102.0 93.0H110.4M110.4 93.0H118.8M118.8 93.0H127.2M127.2 93.0H135.6M135.6 93.0H144.0M144.0 93.0H152.4M152.4 93.0H160.8M160.8 93.0H169.2M169.2 93.0H177.6M177.6 93.0H186.0M186.0 93.0H194.4M194.4 93.0H202.8M202.8 93.0H211.2M211.2 93.0H219.6M219.6 93.0H228.0M228.0 93.0H236.4M236.4 93.0H244.8M244.8 93.0H253.2M253.2 93.0H261.6M261.6 93.0H270.0M270.0 93.0H278.4M278.4 93.0H286.8M286.8 93.0H295.2M295.2 93.0H303.6M303.6 93.0H312.0M312.0 93.0H320.4M320.4 93.0H328.8M328.8 93.0H337.2M337.2 93.0H345.6M345.6 93.0H354.0M354.0 93.0H362.4M362.4 93.0H370.8M370.8 93.0H379.2M379.2 93.0H387.6M387.6 93.0H396.0M396.0 93.0H404.4M404.4 93.0H412.8M412.8 93.0H421.2M421.2 93.0H429.6M429.6 93.0H438.0M438.0 93.0H446.4M446.4 93.0H454.8M454.8 93.0H463.2M463.2 93.0H471.6M471.6 93.0H480.0M480.0 93.0H488.4M488.4 93.0H496.8M496.8 93.0H505.2M505.2 93.0H513.6M513.6 93.0H522.0M522.0 93.0H530.4" stroke="#cfd8cf" stroke-width="1.2" fill="none"/>
+<g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', 'Liberation Mono', monospace" font-size="14.0" xml:space="preserve">
+<text x="34.8" y="61.0" fill="#6cc3f5" textLength="378.0" lengthAdjust="spacingAndGlyphs">↑↓ choose   enter run   ^r refresh   esc quit</text>
+<text x="555.6" y="61.0" fill="#eef5ee" font-weight="bold" textLength="58.8" lengthAdjust="spacingAndGlyphs">○ infra</text>
+<text x="690.0" y="61.0" fill="#77847a" textLength="58.8" lengthAdjust="spacingAndGlyphs">stopped</text>
+<text x="18.0" y="79.0" fill="#6cc3f5" font-weight="bold" textLength="58.8" lengthAdjust="spacingAndGlyphs">msbctl&gt;</text>
+<text x="580.8" y="79.0" fill="#cfd8cf" textLength="25.2" lengthAdjust="spacingAndGlyphs">ram</text>
+<text x="639.6" y="79.0" fill="#77847a" textLength="84.0" lengthAdjust="spacingAndGlyphs">4G ceiling</text>
+<text x="765.6" y="79.0" fill="#cfd8cf" textLength="25.2" lengthAdjust="spacingAndGlyphs">cpu</text>
+<text x="807.6" y="79.0" fill="#77847a" textLength="8.4" lengthAdjust="spacingAndGlyphs">2</text>
+<text x="580.8" y="97.0" fill="#cfd8cf" textLength="201.6" lengthAdjust="spacingAndGlyphs">as     Robin Fairweather</text>
+<text x="34.8" y="115.0" fill="#eef5ee" font-weight="bold" textLength="184.8" lengthAdjust="spacingAndGlyphs">register a new project</text>
+<text x="639.6" y="115.0" fill="#77847a" textLength="142.8" lengthAdjust="spacingAndGlyphs">robin@example.com</text>
+<text x="34.8" y="133.0" fill="#cfd8cf" textLength="462.0" lengthAdjust="spacingAndGlyphs">manage sandboxes        (list, start, stop, rebuild, …)</text>
+<text x="580.8" y="133.0" fill="#cfd8cf" textLength="151.2" lengthAdjust="spacingAndGlyphs">image  base:ubuntu</text>
+<text x="34.8" y="151.0" fill="#cfd8cf" textLength="495.6" lengthAdjust="spacingAndGlyphs">setup                   identities, Claude login, your ne··</text>
+<text x="580.8" y="151.0" fill="#cfd8cf" textLength="210.0" lengthAdjust="spacingAndGlyphs">dir    ~/workspaces/infra</text>
+<text x="34.8" y="169.0" fill="#cfd8cf" textLength="243.6" lengthAdjust="spacingAndGlyphs">edit your CLAUDE.md additions</text>
+<text x="34.8" y="187.0" fill="#cfd8cf" textLength="168.0" lengthAdjust="spacingAndGlyphs">refresh version info</text>
+<text x="555.6" y="187.0" fill="#eef5ee" font-weight="bold" textLength="117.6" lengthAdjust="spacingAndGlyphs">● ml-notebooks</text>
+<text x="690.0" y="187.0" fill="#77847a" textLength="58.8" lengthAdjust="spacingAndGlyphs">running</text>
+<text x="34.8" y="205.0" fill="#cfd8cf" textLength="33.6" lengthAdjust="spacingAndGlyphs">quit</text>
+<text x="580.8" y="205.0" fill="#cfd8cf" textLength="386.4" lengthAdjust="spacingAndGlyphs">ram    5120M / 16384M      cpu  load 2.87 on 8</text>
+<text x="580.8" y="223.0" fill="#cfd8cf" textLength="201.6" lengthAdjust="spacingAndGlyphs">as     Robin Fairweather</text>
+<text x="639.6" y="241.0" fill="#77847a" textLength="142.8" lengthAdjust="spacingAndGlyphs">robin@example.com</text>
+<text x="580.8" y="259.0" fill="#cfd8cf" textLength="151.2" lengthAdjust="spacingAndGlyphs">image  base:ubuntu</text>
+<text x="580.8" y="277.0" fill="#cfd8cf" textLength="268.8" lengthAdjust="spacingAndGlyphs">dir    ~/workspaces/ml-notebooks</text>
+<text x="555.6" y="313.0" fill="#eef5ee" font-weight="bold" textLength="75.6" lengthAdjust="spacingAndGlyphs">● webshop</text>
+<text x="690.0" y="313.0" fill="#77847a" textLength="58.8" lengthAdjust="spacingAndGlyphs">running</text>
+<text x="580.8" y="331.0" fill="#cfd8cf" textLength="378.0" lengthAdjust="spacingAndGlyphs">ram    1873M / 8192M      cpu  load 0.42 on 4</text>
+<text x="580.8" y="349.0" fill="#cfd8cf" textLength="201.6" lengthAdjust="spacingAndGlyphs">as     Robin Fairweather</text>
+<text x="639.6" y="367.0" fill="#77847a" textLength="142.8" lengthAdjust="spacingAndGlyphs">robin@example.com</text>
+<text x="580.8" y="385.0" fill="#cfd8cf" textLength="151.2" lengthAdjust="spacingAndGlyphs">image  base:ubuntu</text>
+<text x="580.8" y="403.0" fill="#cfd8cf" textLength="226.8" lengthAdjust="spacingAndGlyphs">dir    ~/workspaces/webshop</text>
+</g></svg>
