@@ -82,12 +82,19 @@ $ xdg-open docs/_site/index.html       # works straight off the disk
 ```
 
 Each page starts with `title`, `section` (Start here, Guides, Reference or
-Project) and `order`. The converter supports a deliberate subset of Markdown:
+Project), `order` and a one-sentence `description`, which `--check` requires:
+it becomes the page's meta description, its link preview and its line in
+`llms.txt`. The converter supports a deliberate subset of Markdown:
 headings, paragraphs, lists, fenced code (`console` blocks get prompts, and
 their copy button copies only the commands), tables, `> **Note:**` /
 `**Tip:**` / `**Warning:**` callouts, and inline code, emphasis, links and
 images. A new `msbctl` subcommand needs a `### msbctl <name>` section on the
 [Commands](commands.md) page, or `--check` fails.
+
+The same build writes what search engines and agents look for: canonical
+links, Open Graph and JSON-LD tags, `sitemap.xml`, `llms.txt`, `llms-full.txt`
+and a Markdown copy of every page. None of it is hand-maintained. The social
+preview image is `docs/assets/social-card.png`.
 
 The site deploys to GitHub Pages from `main`.
 

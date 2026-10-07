@@ -75,6 +75,11 @@ config, your tokens and your keys.
 - Looking up a flag? See the [command reference](commands.md) and the
   [configuration reference](configuration.md).
 
+> **Tip:** Pointing an agent at these docs? Every page has a Markdown copy
+> beside it (`install.md` next to `install.html`), [`llms.txt`](llms.txt)
+> indexes them, and [`llms-full.txt`](llms-full.txt) is all of them in one
+> file.
+
 > **Note:** msb-manager is young and developed for one operator's machine
 > (Fedora, `msb` 0.7.6 and 0.7.7). It's small, has no dependencies and is
 > commented for whoever has to debug it at 2am, but it hasn't been run widely.
