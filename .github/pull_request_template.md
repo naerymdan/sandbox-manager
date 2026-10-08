@@ -6,7 +6,7 @@
 
 - [ ] `scripts/check.sh` passes locally
 - [ ] If behaviour changed: a one-line entry under **Unreleased** in `CHANGELOG.md`
-- [ ] If behaviour changed: comments in `defaults.toml` / `templates/` and `CLAUDE.md` still say what is true
+- [ ] If behaviour changed: comments in `defaults.toml` / `templates/` and `AGENTS.md` still say what is true
 - [ ] New or widened egress rule: it comes from an observed denial (host, port, what failed), not a guess
 - [ ] Touches `install.sh` or `scripts/package.sh`: `PAYLOAD` is still the same in both
 - [ ] No secrets, tokens or machine-local paths in the diff

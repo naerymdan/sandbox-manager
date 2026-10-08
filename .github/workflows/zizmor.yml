@@ -1,7 +1,7 @@
 name: zizmor
 
 # Static analysis of the workflows: template injection, over-broad permissions,
-# unpinned actions, credential persistence. CLAUDE.md promises read-only default
+# unpinned actions, credential persistence. AGENTS.md promises read-only default
 # permissions and hash-pinned actions; this is what keeps the promise honest.
 
 on:
