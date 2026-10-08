@@ -143,6 +143,7 @@ Any key it sets overrides the project's file.
 | `autostart` | started when the picker opens |
 | `ssh_keys` | key fingerprints this sandbox may use. Absent means all, `[]` means none |
 | `mounts` | extra folders, as `"HOST[:GUEST][:ro\|rw]"` |
+| `ports` | published ports, as `"PORT"`, `"HOST:GUEST"` or `"BIND:HOST:GUEST"`, optionally `/udp`. Needs a rebuild |
 | `egress_mode` | `"observe"` while measuring; only ever set here, never in the project |
 | `volumes` | the disk-volume prefix, set by `msbctl rename` to keep the old disks |
 | `image`, `cpus`, `memory`, `root_disk`, `conf`, `rule_groups`, `extra_rules` | per-machine overrides |

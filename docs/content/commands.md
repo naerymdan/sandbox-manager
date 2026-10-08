@@ -260,6 +260,17 @@ msbctl mount name|. SRC[:DEST][:ro|rw] [--rw] [--rebuild]
 Add an extra host folder. `DEST` defaults to `/mnt/<folder name>`; read-only
 unless `rw` or `--rw` is given. Needs a rebuild.
 
+### `msbctl port`
+
+```text
+msbctl port name|. [PORT|HOST:GUEST|BIND:HOST:GUEST[/udp]…] [--rm PORT] [--rebuild]
+```
+
+Publish a host port to a server inside the sandbox, so `http://localhost:PORT`
+on this machine reaches it. A bare `PORT` is the same on both sides; with no
+ports given it lists them, and `--rm` stops publishing one. Needs a rebuild. See
+[Reaching a server in the sandbox](advanced.md#reaching-a-server-in-the-sandbox).
+
 ### `msbctl secret`
 
 ```text
