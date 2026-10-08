@@ -123,6 +123,25 @@ repo, and offers the rebuild the new mount needs.
 
 Both are also in `msbctl edit` → "Name & folder".
 
+## Where the project appears in the sandbox
+
+By default the project is mounted at `/work`. `msbctl add` asks where it
+should appear, and `msbctl edit` → "Name & folder" changes it:
+
+- **the same path as on the host.** Absolute paths in compiler errors, stack
+  traces and an agent's output are then valid on both sides, so your editor (or
+  an ACP client) can open them as they are. A `msbctl move` takes the mount
+  along with it.
+- **`/work`.** This keeps your folder layout and username out of the guest.
+- **any other absolute path.** Not inside a system folder (`/usr`, `/etc`, …)
+  and not over a whole one like `/home` or `/tmp`.
+
+It's stored as `guest_path` in the registry entry (`"host"`, `"/work"` or the
+path), never in `.msb/sandbox.toml`, because a host path is one person's
+machine. Set the default for new sandboxes in `msbctl setup` → "Defaults for
+new sandboxes". A change needs a rebuild, and Claude Code keeps its sessions
+and memory per path, so the ones from the old path stay behind.
+
 ## Extra folders
 
 ```console
@@ -140,7 +159,7 @@ create time.
 ```toml title=".msb/sandbox.toml"
 [bootstrap]
 packages = ["postgresql-client"]       # extra apt packages
-script   = "scripts/sandbox-setup.sh"  # run last, inside the guest, from /work
+script   = "scripts/sandbox-setup.sh"  # run last, inside the guest, from the project folder
 
 [env]
 SOME_PROJECT_FLAG = "1"                # merged over the machine-wide [env]

@@ -1,7 +1,7 @@
 # Contributing
 
 Issues and PRs are welcome, particularly from anyone on a different distro or a
-newer `msb`. Read `CLAUDE.md` first: despite the name it is the design guide for
+newer `msb`. Read `AGENTS.md` first: despite the name it is the design guide for
 humans and agents alike, and it records the failure modes that are not obvious.
 
 ## Before you open a PR
@@ -25,7 +25,7 @@ scripts/smoke-install.sh    # package, then install into a throwaway HOME
 ## Testing against a real `msb`
 
 `msbctl` needs `/dev/kvm` and `msb`. Use a throwaway `MSB_CONFIG_DIR` and
-`MSB_STATE_DIR`, and `msb rm -f` what you create. `CLAUDE.md` has the details.
+`MSB_STATE_DIR`, and `msb rm -f` what you create. `AGENTS.md` has the details.
 Without KVM, `scripts/check.sh` is what you can run.
 
 ## Workflows

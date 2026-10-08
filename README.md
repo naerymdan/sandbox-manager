@@ -155,7 +155,7 @@ publishes. To build the same assets locally (without publishing):
 scripts/package.sh --version 0.2.0 --repo runoverlabs/sandbox-manager   # writes ./dist
 ```
 
-`scripts/package.sh` copies an explicit list of files (not `.msb/`, `CLAUDE.md` or
+`scripts/package.sh` copies an explicit list of files (not `.msb/`, `AGENTS.md`, `CLAUDE.md` or
 itself), fails on any symlink or `.env`-looking file, normalizes modes, and builds
 a reproducible tarball plus the repository-bound `get.sh` and `checksums.sha256`.
 It does not publish.

@@ -36,8 +36,8 @@ STATE="${MSB_STATE_DIR:-$HOME/.local/state/msb}"
 KEEP_VERSIONS=2          # the current one and the one before it, to roll back to
 
 # What a package contains, and what a checkout has that a package must not carry
-# (.msb/ is THIS repo's own sandbox policy, scripts/ builds releases, CLAUDE.md is
-# for working on the repo).
+# (.msb/ is THIS repo's own sandbox policy, scripts/ builds releases, AGENTS.md and
+# CLAUDE.md are for working on the repo).
 PAYLOAD="msbctl msb-picker bootstrap.sh install.sh get.sh defaults.toml VERSION LICENSE README.md msb-manager.desktop templates profile spikes"
 
 MODE=""

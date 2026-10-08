@@ -113,9 +113,9 @@ $ msbctl shell
 ```
 
 Inside a registered project folder you can leave the sandbox name out (see
-[Everyday use](everyday.md)). The shell starts in `/work`, which is your project
-folder, shared from the host. Files the guest writes there belong to you on the
-host.
+[Everyday use](everyday.md)). The shell starts in `/work` (or the host's own
+path, if you chose that when registering), which is your project folder,
+shared from the host. Files the guest writes there belong to you on the host.
 
 Run the agent:
 

@@ -23,7 +23,7 @@ VERSION=""
 REPO="${MSB_MANAGER_REPO:-}"
 
 # Keep in step with PAYLOAD in install.sh. Not shipped: .msb/ (this repo's own
-# sandbox policy), scripts/ (this file), CLAUDE.md (for working ON the repo), .git.
+# sandbox policy), scripts/ (this file), AGENTS.md/CLAUDE.md (for working ON the repo), .git.
 PAYLOAD="msbctl msb-picker bootstrap.sh install.sh get.sh defaults.toml VERSION LICENSE README.md msb-manager.desktop templates profile spikes"
 
 die()  { printf 'package: %s\n' "$*" >&2; exit 1; }

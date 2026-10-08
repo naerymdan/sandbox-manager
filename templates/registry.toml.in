@@ -14,6 +14,14 @@
 name    = "{{NAME}}"
 project = "{{PROJECT}}"
 
+# Where the project appears inside the sandbox: "/work", "host" for the same
+# path as `project` (so absolute paths in errors and agent output are valid on
+# both sides, and it follows a `msbctl move`), or any absolute path. Fixed at
+# create time: change it with `msbctl edit {{NAME}}` → Name & folder, which
+# offers the rebuild. Claude Code keeps its sessions per path, so the ones from
+# the old path stay behind.
+guest_path = "{{GUEST_PATH}}"
+
 # owner/name, used for the PAT binding and shown in the picker. Empty if the
 # project has no GitHub remote.
 repo = "{{REPO}}"

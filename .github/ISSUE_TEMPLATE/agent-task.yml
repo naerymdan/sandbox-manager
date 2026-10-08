@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        An agent starting from this issue has the repo and its `CLAUDE.md`, and nothing else.
+        An agent starting from this issue has the repo and its `AGENTS.md`, and nothing else.
         Anything you know that is not in the repo has to be written here.
   - type: textarea
     id: goal
@@ -25,7 +25,7 @@ body:
     id: constraints
     attributes:
       label: Constraints
-      description: What must not change or be added. `CLAUDE.md` already covers the hard ones (stdlib only, no secrets in the repo); list anything specific to this task.
+      description: What must not change or be added. `AGENTS.md` already covers the hard ones (stdlib only, no secrets in the repo); list anything specific to this task.
       placeholder: "e.g. must not need a rebuild of existing sandboxes"
   - type: textarea
     id: verify

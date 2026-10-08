@@ -40,6 +40,7 @@ including a whole egress group, replaces the shipped value.
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `workspaces` | `"~/workspaces"` | where a bare name given to `msbctl add` resolves. `""` resolves against the current directory |
+| `guest_path` | `"/work"` | where a new sandbox mounts its project: `"/work"`, `"host"` for the host's own path, or an absolute path |
 | `image` | a pinned devcontainers Ubuntu digest | the image a new sandbox starts from |
 | `cpus` | `4` | |
 | `memory` | `"8G"` | a ceiling, not a reservation |
@@ -123,10 +124,10 @@ name, so it's safe to commit.
 | Key | Meaning |
 | --- | --- |
 | `packages` | extra apt packages |
-| `claude` | install Claude Code (default true) |
+| `claude` | install Claude Code and its ACP adapter, `claude-agent-acp` (default true) |
 | `bun`, `gitleaks` | install these (default false) |
 | `containers_storage` | `"fuse-overlayfs"` for podman without a container disk |
-| `script` | a project script run last, inside the guest, from `/work` |
+| `script` | a project script run last, inside the guest, from the project folder |
 
 ## The registry entry
 
@@ -136,6 +137,7 @@ Any key it sets overrides the project's file.
 | Key | Meaning |
 | --- | --- |
 | `name`, `project` | the sandbox's name and the absolute path of its project folder |
+| `guest_path` | where the project appears inside: `"/work"`, `"host"` (the same path as `project`) or an absolute path. Absent means the `[defaults]` value. Needs a rebuild |
 | `repo` | `owner/name` on GitHub, for the token binding and the picker |
 | `identity` | an `[identities]` name; applied at every start |
 | `autostart` | started when the picker opens |
