@@ -8,6 +8,9 @@ release notes.
 
 ## [Unreleased]
 
+### Fixed
+- `msbctl allow`, `edit` and `setup` accept `host:tcp:port` (and `host:udp:port`) instead of turning it into a rule msb refuses at create (`…:tcp:2222:tcp:443`); a rule already saved that way now fails before create, naming the file to fix it in.
+
 ## [0.2.1] - 2026-10-08
 
 ### Added
