@@ -235,8 +235,9 @@ what it can immediately and offers one rebuild at the end for the rest.
 msbctl allow name|. target… [--rebuild]
 ```
 
-Add egress rules. Each target is `host` (HTTPS, :443), `host:port` (TCP), or a
-full rule such as `allow@10.0.0.5:tcp:5432`. Written to the project's
+Add egress rules. Each target is `host` (HTTPS, :443), `host:port` (TCP),
+`host:udp:port`, or a full rule such as `allow@10.0.0.5:tcp:5432`; an IPv6
+address goes in brackets, `[fd00::5]:22`. Written to the project's
 `extra_rules`. See [Adding a host](egress.md#adding-a-host).
 
 ### `msbctl observe`
