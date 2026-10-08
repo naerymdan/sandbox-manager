@@ -1102,7 +1102,7 @@ class _AgentFilterServer(socketserver.ThreadingUnixStreamServer):
         try:
             os.unlink(self.sock_path)
         except FileNotFoundError:
-            pass
+            pass  # no stale socket from an earlier run
         old = os.umask(0o077)           # the socket is created 0600
         try:
             super().__init__(self.sock_path, _AgentFilter)
@@ -1135,7 +1135,7 @@ def cmd_agent_filter(args, config):
         try:
             os.unlink(server.sock_path)
         except FileNotFoundError:
-            pass
+            pass  # stop_agent_filter() got there first
 
 
 def _agent_alive(path):
@@ -1170,11 +1170,12 @@ def ensure_agent_filter(box):
 
     if _agent_alive(box.agent_sock):
         return
-    log = open(os.path.join(AGENT_DIR, f"{box.name}.log"), "ab")
-    subprocess.Popen([sys.executable, os.path.realpath(__file__),
-                      "_agent-filter", box.name],
-                     stdin=subprocess.DEVNULL, stdout=log, stderr=log,
-                     start_new_session=True)
+    # The daemon gets its own copy of the descriptor; ours closes right away.
+    with open(os.path.join(AGENT_DIR, f"{box.name}.log"), "ab") as log:
+        subprocess.Popen([sys.executable, os.path.realpath(__file__),
+                          "_agent-filter", box.name],
+                         stdin=subprocess.DEVNULL, stdout=log, stderr=log,
+                         start_new_session=True)
     for _ in range(30):
         if _agent_alive(box.agent_sock):
             return
@@ -1189,12 +1190,12 @@ def stop_agent_filter(box):
         with open(pidfile) as fh:
             os.kill(int(fh.read().strip()), signal.SIGTERM)
     except (OSError, ValueError):
-        pass
+        pass  # not running, or a stale pidfile: nothing to stop
     for suffix in ("sock", "pid", "upstream"):
         try:
             os.unlink(os.path.join(AGENT_DIR, f"{box.name}.{suffix}"))
         except FileNotFoundError:
-            pass
+            pass  # already gone
 
 
 def _parse_pub_line(line):
@@ -1596,7 +1597,7 @@ def assemble_profile():
             if fh.read() == text:
                 return True
     except FileNotFoundError:
-        pass
+        pass  # first assembly: nothing to compare against
     fd, tmp = tempfile.mkstemp(dir=PROFILE_DIR)
     with os.fdopen(fd, "w", encoding="utf-8") as fh:
         fh.write(text)
@@ -1897,7 +1898,7 @@ def cmd_purge(args, config):
         try:
             os.unlink(path)
         except FileNotFoundError:
-            pass
+            pass  # never had one, or already gone
     cache = read_json(VERSIONS_CACHE)
     cache.pop(box.name, None)
     write_json(VERSIONS_CACHE, cache)
@@ -2111,9 +2112,9 @@ def gave_flag(flags, short, long):
                or (short and f.startswith(short)) for f in flags)
 
 
-def msb_exec_argv(box, flags, tty=False):
+def msb_exec_argv(box, flags, want_tty=False):
     cmd = ["msb", "exec", box.name]
-    if tty and not any(gave_flag(flags, s, l) for s, l in (
+    if want_tty and not any(gave_flag(flags, s, l) for s, l in (
             ("-t", "--tty"), (None, "--no-tty"), (None, "--stream"))):
         cmd.append("--tty")
     cmd += ["-e", f"SSH_AUTH_SOCK={GUEST_AGENT_SOCK}"]
@@ -2125,7 +2126,7 @@ def msb_exec_argv(box, flags, tty=False):
 def cmd_shell(args, config):
     box = Sandbox(args.name, config)
     ensure_running(box)
-    os.execvp("msb", [*msb_exec_argv(box, args.msb_flags, tty=True), "--", "bash", "-l"])
+    os.execvp("msb", [*msb_exec_argv(box, args.msb_flags, want_tty=True), "--", "bash", "-l"])
 
 
 def cmd_exec(args, config):
@@ -3914,7 +3915,7 @@ def _recover_broken(name, message):
             if os.path.isfile(project):
                 files.append(("sandbox.toml     this project", project))
     except OSError:
-        pass
+        pass  # the entry is unreadable: offer it alone
     label = choose_one("fix which file", [l for l, _ in files] + ["give up"], 0)
     if label == "give up":
         return False
@@ -4820,7 +4821,7 @@ def _restore_tty(fd, saved):
     try:
         termios.tcsetattr(fd, termios.TCSADRAIN, saved)
     except termios.error:
-        pass
+        pass  # the terminal is gone; see above
 
 
 def _choose_tui(title, options, default):
@@ -5322,7 +5323,6 @@ def cmd_add(args, config):
                      "nothing else needs redoing")
             else:
                 note(f"cloned into {tilde(target)}")
-                found = checkouts(project)
 
     guest_path = pick_guest_path(project, config.get("defaults", {})
                                  .get("guest_path", GUEST_PROJECT))
