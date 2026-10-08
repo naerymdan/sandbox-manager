@@ -8,6 +8,8 @@ release notes.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-08
+
 ### Added
 - `msbctl shell` and `msbctl exec` pass any flag after the name to `msb exec` as is (`-u root`, `--timeout 5m`, `-e KEY=value`, …; `msb exec --help` lists them); for `exec`, end them with `--`.
 - The project can appear inside the sandbox at its host path (or any path) instead of `/work`, so paths in errors and agent output open on the host as they are: `msbctl add` asks, `msbctl edit` → Name & folder changes it (needs a rebuild), and `setup` sets the default.

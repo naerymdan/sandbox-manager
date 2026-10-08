@@ -84,7 +84,7 @@ curl -fsSL https://github.com/runoverlabs/sandbox-manager/releases/latest/downlo
 `get.sh` finds the latest release, downloads it, **verifies its sha256** against
 the checksums published with it (and installs nothing if they differ), and runs
 the installer inside it. If an authenticated [`gh`](https://cli.github.com) is
-installed it also verifies the tarball's **build provenance** (see below). Pin a release with `sh -s -- --version v0.2.0`; other
+installed it also verifies the tarball's **build provenance** (see below). Pin a release with `sh -s -- --version v0.2.1`; other
 flags (`--prefix`, `--bin-dir`, `--no-desktop`) go to the installer.
 
 That is a **package install**: the tree is copied to
@@ -95,7 +95,7 @@ depends on a checkout. Everything is real files; the installer refuses a tree
 that contains symlinks.
 
 ```sh
-msbctl self-update            # latest release; --version v0.2.0 for a specific one
+msbctl self-update            # latest release; --version v0.2.1 for a specific one
 ~/.local/share/msb-manager/current/install.sh --uninstall   # your config and sandboxes stay
 ```
 

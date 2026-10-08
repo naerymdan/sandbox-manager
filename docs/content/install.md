@@ -32,7 +32,7 @@ refuses to install if that check fails.
 To pin a release or pass installer options:
 
 ```console
-$ curl -fsSL .../get.sh | sh -s -- --version v0.2.0     # a specific release
+$ curl -fsSL .../get.sh | sh -s -- --version v0.2.1     # a specific release
 $ curl -fsSL .../get.sh | sh -s -- --prefix ~/tools      # flags after -- go to install.sh
 ```
 
@@ -53,7 +53,7 @@ the installer refuses a release that contains symlinks.
 
 ```console
 $ msbctl self-update                     # the latest release
-$ msbctl self-update --version v0.2.0    # a specific one
+$ msbctl self-update --version v0.2.1    # a specific one
 $ ~/.local/share/msb-manager/current/install.sh --uninstall
 ```
 
@@ -66,7 +66,7 @@ repository's release workflow, of exactly which commit built which file. You
 can check it yourself:
 
 ```console
-$ gh attestation verify msb-manager-0.2.0.tar.gz --repo runoverlabs/sandbox-manager \
+$ gh attestation verify msb-manager-0.2.1.tar.gz --repo runoverlabs/sandbox-manager \
     --signer-workflow runoverlabs/sandbox-manager/.github/workflows/release.yml
 ```
 
