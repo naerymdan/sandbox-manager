@@ -24,6 +24,7 @@
     msbctl observe <name> [on|off|report]   stop blocking and record what is reached
     msbctl secret add|rm|ls <name>   extra tokens the sandbox can use but not see
     msbctl mount <name> SRC[:DEST][:ro|rw]   add an extra host folder (then rebuild)
+    msbctl port <name> [port…] [--rm port]   publish a host port to a server inside (then rebuild)
     msbctl exec <name> [flags] -- cmd…   shell and exec pass msb exec's flags on
     msbctl code <name>            open the editor on the project, on the host
     msbctl reclaim <name>         give the guest's page cache back to the host
@@ -56,6 +57,7 @@ import argparse
 import base64
 import datetime as dt
 import hashlib
+import ipaddress
 import json
 import os
 import re
@@ -139,6 +141,8 @@ GUEST_CLAUDE_JSON = "/root/.claude.json"
 # "host" for the host's own path, or any absolute path. See
 # Sandbox.guest_project.
 GUEST_PROJECT = "/work"
+# msb binds a published port's host side here when the spec names no address.
+LOOPBACK_BIND = "127.0.0.1"
 
 
 # Guest folders Claude Code trusts besides the project, so the "do you trust
@@ -437,6 +441,14 @@ class Sandbox:
         paths are machine-local, so these live there and never in a repo."""
         return [parse_mount_spec(spec, self.guest_project)
                 for spec in self.entry.get("mounts", [])]
+
+    @property
+    def published_ports(self):
+        """[(spec, bind, host port, guest port, protocol)] from the registry
+        entry. Machine-local like the mounts: a host port is this machine's to
+        hand out, and a committed one would collide with whatever else a
+        cloner runs on it."""
+        return [parse_port_spec(spec) for spec in self.entry.get("ports", [])]
 
     @property
     def guest_path_setting(self):
@@ -779,6 +791,14 @@ class Sandbox:
                 flags += ["--net-rule", rule]
             if self.allow_private_dns:
                 flags += ["--no-dns-rebind-protection"]
+        # Published ports are INBOUND, so the egress policy above has no say in
+        # them, in either mode. msb binds the host side on 127.0.0.1 unless the
+        # spec names an address, and dials the guest's own address rather than
+        # its loopback — so the server inside must listen on 0.0.0.0. Whether
+        # these merge with a `ports:` list in the project's dev.yaml or replace
+        # it is unverified; set them in one place.
+        for spec, *_ in self.published_ports:
+            flags += ["--port", spec]
         # Without this, every HTTPS hostname rule above is a silent deny. It is
         # also what makes secret placeholder substitution possible, so the two
         # requirements coincide and neither can be dropped alone. In observe
@@ -2747,6 +2767,71 @@ def parse_mount_spec(spec, project_dest=GUEST_PROJECT):
     return src, dest, mode
 
 
+def parse_port_spec(spec):
+    """A published port in msb's --port syntax, `[BIND:]HOST:GUEST[/tcp|/udp]`,
+    or a bare `PORT` for the same number on both sides. IPv6 binds are
+    bracketed: `[::1]:8080:80`. Returns (canonical spec, bind, host port, guest
+    port, protocol), the spec in its shortest form; dies on what msb refuses."""
+    raw = str(spec).strip()
+    body, proto = raw, "tcp"
+    for suffix in ("/tcp", "/udp"):
+        if raw.endswith(suffix):
+            body, proto = raw[:-len(suffix)], suffix[1:]
+    bind = LOOPBACK_BIND
+    if body.startswith("["):
+        bind, sep, body = body[1:].partition("]:")
+        if not sep:
+            die(f"port {raw!r}: expected [ADDR]:HOST:GUEST for an IPv6 address")
+    elif body.count(":") == 2:
+        bind, body = body.split(":", 1)
+    parts = body.split(":")
+    if len(parts) == 1:
+        parts *= 2
+    if len(parts) != 2 or not all(p.isdigit() for p in parts):
+        die(f"port {raw!r}: expected PORT, HOST:GUEST or BIND:HOST:GUEST, optionally /udp")
+    host, guest = (int(p) for p in parts)
+    if not all(1 <= n <= 65535 for n in (host, guest)):
+        die(f"port {raw!r}: ports run from 1 to 65535")
+    try:
+        bind = str(ipaddress.ip_address(bind))
+    except ValueError:
+        die(f"port {raw!r}: {bind!r} is not an IP address to bind on")
+    shown = f"[{bind}]" if ":" in bind else bind
+    canonical = f"{host}:{guest}" if bind == LOOPBACK_BIND else f"{shown}:{host}:{guest}"
+    return canonical + ("/udp" if proto == "udp" else ""), bind, host, guest, proto
+
+
+def port_label(bind, host, guest, proto):
+    """How a published port reads to a person: where to point the browser."""
+    if bind == LOOPBACK_BIND:
+        where = f"localhost:{host}"
+    else:
+        where = f"[{bind}]:{host}" if ":" in bind else f"{bind}:{host}"
+    label = f"{where} -> {guest}" + ("/udp" if proto == "udp" else "")
+    if ipaddress.ip_address(bind).is_unspecified:
+        label += "   (every interface: reachable from your network)"
+    return label
+
+
+def port_conflict(name, bind, host, proto):
+    """The other registered sandbox that already publishes this host port, or
+    None. A wildcard bind collides with every address on the same port."""
+    wild = ipaddress.ip_address(bind).is_unspecified
+    for other in registered():
+        if other == name:
+            continue
+        try:
+            specs = read_toml(registry_path_for(other)).get("ports", [])
+            claims = [parse_port_spec(s)[1:] for s in specs]
+        except SystemExit:
+            continue        # its own problem, reported when that sandbox starts
+        for o_bind, o_host, _, o_proto in claims:
+            if (o_host, o_proto) == (host, proto) and (
+                    o_bind == bind or wild or ipaddress.ip_address(o_bind).is_unspecified):
+                return other
+    return None
+
+
 def pick_guest_path(project, current):
     """Wizard: where the project appears inside the sandbox. Returns the value
     for `guest_path`: "host", "/work" or an absolute path. `project` is None
@@ -2808,6 +2893,34 @@ def pick_mounts(project_dest=GUEST_PROJECT):
     return specs
 
 
+def pick_ports(name, taken=()):
+    """Wizard: host ports that reach a server inside the sandbox. Returns spec
+    strings for the registry entry; `taken` are the ones it already has."""
+    say("Published ports")
+    note("A port on this machine that reaches a server inside the sandbox, so a")
+    note("browser here opens http://localhost:PORT. Bound to 127.0.0.1 only. The")
+    note("server inside has to listen on 0.0.0.0 — localhost alone is not reached.")
+    specs = []
+    while confirm("publish a port?" if not specs else "another?"):
+        raw = ask("port, or HOST:GUEST (8080, 3000:5173)")
+        if not raw:
+            break
+        try:
+            spec, bind, host, guest, proto = parse_port_spec(raw)
+        except SystemExit as exc:
+            warn(str(exc).replace("msbctl: ", "", 1))
+            continue
+        if spec in taken or spec in specs:
+            warn(f"{spec} is already published")
+            continue
+        other = port_conflict(name, bind, host, proto)
+        if other:
+            warn(f"{other} publishes {host} too — only one of them can hold it at a time")
+        specs.append(spec)
+        note(port_label(bind, host, guest, proto))
+    return specs
+
+
 def format_list(key, items, example):
     """`key = [...]` for a TOML template, or a commented example when empty."""
     if not items:
@@ -2832,6 +2945,51 @@ def cmd_mount(args, config):
         cmd_rebuild(argparse.Namespace(name=box.name), config)
     else:
         note(f"takes effect when the sandbox is created: `msbctl rebuild {box.name}`")
+
+
+def cmd_port(args, config):
+    """List, add or remove a sandbox's published ports. They live in the
+    registry entry only, and are fixed at create time like the mounts, so a
+    change is recorded here; --rebuild applies it now."""
+    box = Sandbox(args.name, config)
+    ports = box.published_ports
+    if not args.specs and not args.rm:
+        if not ports:
+            note(f"no published ports — `msbctl port {box.name} 8080` adds one")
+        for _, *where in ports:
+            note(port_label(*where))
+        return
+    current = [spec for spec, *_ in ports]
+    drop = []
+    for raw in args.rm:
+        spec = parse_port_spec(raw)[0]
+        if spec in current:
+            drop.append(spec)
+        else:
+            warn(f"{spec} is not published")
+    add = []
+    for raw in args.specs:
+        spec, bind, host, guest, proto = parse_port_spec(raw)
+        if spec in current or spec in add:
+            continue
+        other = port_conflict(box.name, bind, host, proto)
+        if other:
+            warn(f"{other} publishes {host} too — only one of them can hold it at a time")
+        add.append(spec)
+        note(f"recorded  {port_label(bind, host, guest, proto)}")
+    for spec in drop:
+        note(f"removed   {spec}")
+    new = [spec for spec in current if spec not in drop] + add
+    if new == current:
+        note("nothing to change")
+        return
+    set_toml_key(registry_path(box), "ports", new or None)
+    if args.rebuild:
+        cmd_rebuild(argparse.Namespace(name=box.name), config)
+    else:
+        note(f"takes effect when the sandbox is created: `msbctl rebuild {box.name}`")
+    if add:
+        note("the server inside has to listen on 0.0.0.0, not localhost")
 
 
 def secret_var(spec):
@@ -3648,6 +3806,19 @@ def section_folders(box, config, ctx):
         ctx["rebuild"].add("extra folders")
 
 
+def _summary_ports(box):
+    ports = box.published_ports
+    return ", ".join(port_label(*where) for _, *where in ports) if ports else "none"
+
+
+def section_ports(box, config, ctx):
+    current = [spec for spec, *_ in box.published_ports]
+    keep = toggle_list("keep these ports", current, current) if current else []
+    new = keep + pick_ports(box.name, keep)
+    if new != current and set_toml_key(registry_path(box), "ports", new or None):
+        ctx["rebuild"].add("published ports")
+
+
 def _summary_egress(box):
     prefix = "OBSERVED, NOT BLOCKED — " if box.observing else ""
     return (f"{prefix}{len(box.extra_rules)} extra rule(s), "
@@ -3894,6 +4065,7 @@ EDIT_SECTIONS = [
     ("Package caches", section_caches, _summary_caches),
     ("Container storage", section_containers, _summary_containers),
     ("Extra folders", section_folders, _summary_folders),
+    ("Published ports", section_ports, _summary_ports),
     ("Egress rules", section_egress, _summary_egress),
     ("SSH keys", section_keys, _summary_keys),
     ("GitHub token", section_github, _summary_github),
@@ -4161,6 +4333,8 @@ def cmd_show(args, config):
         note(f"cache      {key:<8} {usage}  -> {CACHES.get(key, '?')}")
     for src, dest, mode in box.extra_mounts:
         note(f"folder     {tilde(src)} -> {dest} ({mode})")
+    for _, *where in box.published_ports:
+        note(f"port       {port_label(*where)}")
 
     say("Versions")
     if not info:
@@ -5881,6 +6055,15 @@ def main():
     p.add_argument("--rw", action="store_true", help="read-write (default: read-only)")
     p.add_argument("--rebuild", action="store_true", help="rebuild now so it takes effect")
     p.set_defaults(func=cmd_mount)
+
+    p = sub.add_parser("port", help="publish a host port to a server in a sandbox, or list/remove them")
+    p.add_argument("name", help=DOT_HELP)
+    p.add_argument("specs", nargs="*", metavar="PORT|[BIND:]HOST:GUEST[/udp]",
+                   help="none: list them. A bare PORT is the same on both sides")
+    p.add_argument("--rm", action="append", default=[], metavar="PORT",
+                   help="stop publishing this one (repeatable)")
+    p.add_argument("--rebuild", action="store_true", help="rebuild now so it takes effect")
+    p.set_defaults(func=cmd_port)
 
     p = sub.add_parser("cache", help="show or empty a sandbox's package-cache disks")
     p.add_argument("name", help=DOT_HELP)

@@ -8,6 +8,9 @@ release notes.
 
 ## [Unreleased]
 
+### Added
+- `msbctl port <name> 8080` publishes a host port to a server inside the sandbox, so `http://localhost:8080` reaches it (also under `msbctl edit` → Published ports); stored in the registry entry, bound to 127.0.0.1, needs a rebuild, and the server inside must listen on 0.0.0.0.
+
 ## [0.2.1] - 2026-10-08
 
 ### Added

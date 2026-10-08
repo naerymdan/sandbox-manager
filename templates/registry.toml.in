@@ -59,6 +59,19 @@ autostart = {{AUTOSTART}}
 # `msbctl rebuild {{NAME}}` applies it.
 {{MOUNTS}}
 
+# --------------------------------------------------------- published ports
+#
+# Host ports that reach a server inside the sandbox, so a browser here can open
+# http://localhost:PORT: "PORT" (the same on both sides), "HOST:GUEST", or
+# "BIND:HOST:GUEST", each optionally "/udp". The host side binds 127.0.0.1
+# unless BIND says otherwise — "0.0.0.0:..." opens it to your whole network.
+# The server inside must listen on 0.0.0.0: msb connects to the guest's own
+# address, so one bound to localhost is never reached. Inbound, so the egress
+# rules do not apply. Here and not in the project because a host port is this
+# machine's to hand out. Fixed at create time: `msbctl port {{NAME}} 8080` adds
+# one, then `msbctl rebuild {{NAME}}` applies it.
+# ports = ["8080", "3000:5173"]
+
 # ---------------------------------------------------------------- overrides
 #
 # Every key below is optional. Omit one and the value comes from

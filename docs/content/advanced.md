@@ -154,6 +154,24 @@ own ownership, like `/work`. Host paths are machine-local, so they're stored in
 the registry entry, never in the project. Like every mount, they're fixed at
 create time.
 
+## Reaching a server in the sandbox
+
+```console
+$ msbctl port . 8080 --rebuild        # http://localhost:8080 reaches :8080 inside
+$ msbctl port . 3000:5173             # host 3000 to a dev server on 5173
+$ msbctl port .                       # list them; --rm 8080 removes one
+```
+
+Inside, the server has to listen on `0.0.0.0` — `python3 -m http.server 8080
+--bind 0.0.0.0`, `vite --host 0.0.0.0` — because msb connects to the guest's
+own address and a server bound to `localhost` is never reached. On the host the
+port binds to `127.0.0.1` only; `0.0.0.0:8080:8080` opens it to your network,
+and `msbctl` says so. The connection comes in rather than going out, so the
+egress rules don't apply. Ports are stored in the registry entry, not the
+project, since a host port is one machine's to hand out; `msbctl` warns when
+another sandbox already publishes the same one. They're fixed at create time,
+and `msbctl edit` → "Published ports" changes them too.
+
 ## Project setup and environment
 
 ```toml title=".msb/sandbox.toml"
