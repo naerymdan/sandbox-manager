@@ -1548,11 +1548,14 @@ def ensure_bridge(box):
 
     socat is installed once by the bootstrap, but the process dies with the VM,
     which is why shell/exec both come through here rather than through create.
-    Idempotent: an existing socket is left alone.
+    Idempotent: a socket that accepts a connection is left alone. The file
+    alone proves nothing — /tmp is on the persistent rootfs, so the previous
+    boot's socket survives a stop/start without the socat that served it, and
+    `[ -S ]` would skip the bridge and leave the guest with "connection refused".
     """
     script = (
-        f"[ -S {GUEST_AGENT_SOCK} ] && exit 0\n"
         "command -v socat >/dev/null || exit 0\n"
+        f"socat -u OPEN:/dev/null UNIX-CONNECT:{GUEST_AGENT_SOCK} 2>/dev/null && exit 0\n"
         f"setsid socat 'UNIX-LISTEN:{GUEST_AGENT_SOCK},fork,unlink-early' "
         f"'VSOCK-CONNECT:2:{VSOCK_PORT}' >/dev/null 2>&1 &\n"
         "sleep 1\n"
