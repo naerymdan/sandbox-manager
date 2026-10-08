@@ -605,14 +605,29 @@ class Sandbox:
         sandbox can reorder its way past it.
         """
         table = self.config.get("rules", {})
-        rules = list(table.get("base", []))
+        sources = [("base", table.get("base", []))]
         for group in self.rule_groups:
             if group not in table:
                 die(f"{self.name}: unknown rule group {group!r}. "
                     f"Known: {', '.join(sorted(table))}")
-            rules.extend(table[group])
-        rules.extend(self.extra_rules)
+            sources.append((group, table[group]))
+        sources.append((None, self.extra_rules))
+        rules = []
+        for group, items in sources:
+            for rule in items:
+                problem = rule_problem(rule)
+                if problem:
+                    where = (f"rule group `{group}` (`msbctl config` shows which file)" if group
+                             else f"extra_rules in {tilde(self._origin('extra_rules'))}")
+                    die(f"{self.name}: {rule!r} in {where}: {problem}")
+            rules.extend(items)
         return rules
+
+    def _origin(self, key):
+        """The file a `_pick` key came from: the registry entry, else sandbox.toml."""
+        if key in self.entry:
+            return os.path.join(REGISTRY_DIR, f"{self.name}.toml")
+        return os.path.join(self.project, ".msb", "sandbox.toml")
 
     # ------------------------------------------------------------ the secrets
 
@@ -2357,19 +2372,80 @@ def set_entry_value(box, key, literal):
         fh.write("\n".join(lines) + "\n")
 
 
+RULE_PROTOCOLS = ("any", "tcp", "udp", "icmpv4", "icmpv6")
+
+
+def _split_rule_target(right):
+    """`<target>[:<proto>[:<ports>]]` -> [target, proto?, ports?, anything
+    extra…], splitting the way msb does: an IPv6 target is bracketed, so its
+    own colons are not separators."""
+    if right.startswith("["):
+        target, sep, rest = right.partition("]")
+        if not sep:
+            return None
+        target += "]"
+        if rest and not rest.startswith(":"):
+            return None
+        return [target] + (rest[1:].split(":") if rest else [])
+    return right.split(":")
+
+
+def _ports_ok(ports):
+    if ports == "any":
+        return True
+    lo, _, hi = ports.partition("-")
+    return all(p.isdigit() and 1 <= int(p) <= 65535 for p in ([lo, hi] if hi else [lo]))
+
+
+def rule_problem(rule):
+    """What msb will refuse about a --net-rule token, or None. A shape check
+    against `<action>[:<direction>]@<target>[:<proto>[:<ports>]]`, not a full
+    parse: targets are left to msb, which names the bad one itself. The point
+    is to say WHICH FILE holds a broken rule before msb fails the create.
+    msb also takes several rules in one comma-separated token, as `base` does."""
+    if "," in rule:
+        parts = [part.strip() for part in rule.split(",") if part.strip()]
+        return next(filter(None, map(rule_problem, parts)), None)
+    left, at, right = rule.partition("@")
+    if not at:
+        return "no `@` — a rule is allow@TARGET[:PROTO[:PORTS]]"
+    action, _, direction = left.partition(":")
+    if action not in ("allow", "deny") or direction not in ("", "egress", "ingress", "any"):
+        return f"{left!r} is not allow/deny[:egress|ingress|any]"
+    fields = _split_rule_target(right)
+    if not fields or not fields[0]:
+        return "no target after `@`"
+    if len(fields) > 3:
+        return "fields after the ports — a rule ends at allow@TARGET:PROTO:PORTS"
+    if len(fields) > 1 and fields[1] not in RULE_PROTOCOLS:
+        return f"{fields[1]!r} is not a protocol ({', '.join(RULE_PROTOCOLS)})"
+    if len(fields) > 2 and not _ports_ok(fields[2]):
+        return f"{fields[2]!r} is not a port, a LO-HI range or `any`"
+    return None
+
+
 def parse_allow_target(raw):
     """One `allow` argument as a net rule. Accepts a full rule (`allow@...`),
-    `host` (HTTPS), or `host:port` (TCP)."""
+    `host` (HTTPS), `host:port` (TCP) or `host:proto:port`; an IPv6 address
+    goes in brackets, `[fd00::1]:22`. Dies on anything else rather than
+    guessing: a guess once turned `10.0.0.6:tcp:2222` into a rule msb refused."""
     raw = raw.strip()
     if "@" in raw:
-        return raw
-    host, _, port = raw.rpartition(":") if raw.count(":") == 1 else (raw, "", "")
-    if not host:
-        host, port = raw, "443"
-    port = port or "443"
-    if not port.isdigit():
-        die(f"{raw!r}: expected host, host:port, or a full rule like allow@host:tcp:443")
-    return f"allow@{host}:tcp:{port}"
+        rule = raw
+    else:
+        fields = _split_rule_target(raw)
+        if raw.count(":") > 2 and re.fullmatch(r"[0-9a-fA-F:]+(/\d+)?", raw):
+            die(f"{raw!r}: an IPv6 address goes in brackets, like [{raw}] or [{raw}]:22")
+        if not fields or not fields[0] or len(fields) > 3:
+            die(f"{raw!r}: expected host, host:port, host:tcp:port, or a full rule "
+                "like allow@host:tcp:443")
+        host, proto, port = (fields[0], "tcp", "443") if len(fields) == 1 else \
+            (fields[0], "tcp", fields[1]) if len(fields) == 2 else fields
+        rule = f"allow@{host}:{proto}:{port}"
+    problem = rule_problem(rule)
+    if problem:
+        die(f"{raw!r}: {problem}")
+    return rule
 
 
 def append_toml_list(path, key, items, after_key=None):
@@ -3460,7 +3536,11 @@ def _add_rule_group(config):
     rules, notes = [], []
     for token in [t for t in re.split(r"[,\s]+", raw.strip()) if t]:
         if "@" in token:
-            rules.append(token)
+            # A full rule, kept as given once it has the shape msb takes.
+            try:
+                rules.append(parse_allow_target(token))
+            except SystemExit as exc:
+                warn(str(exc).replace("msbctl: ", "", 1) + " — skipped")
             continue
         if by_name and ":" not in token:
             rules.append(parse_allow_target(token))
@@ -3470,7 +3550,11 @@ def _add_rule_group(config):
         elif not by_name and ":" not in token:
             warn(f"{token}: an address needs a port, like {token}:22 — skipped")
         else:
-            rule = parse_allow_target(token)
+            try:
+                rule = parse_allow_target(token)
+            except SystemExit as exc:
+                warn(str(exc).replace("msbctl: ", "", 1) + " — skipped")
+                continue
             if re.search(r":tcp:80(\b|$)", rule):
                 warn(f"{token}: plaintext :80 is denied by `base` first — skipped")
                 continue
@@ -3859,7 +3943,11 @@ def section_egress(box, config, ctx):
     for token in re.split(r"[,\s]+", raw.strip()):
         if not token:
             continue
-        rule = parse_allow_target(token)
+        try:
+            rule = parse_allow_target(token)
+        except SystemExit as exc:
+            warn(str(exc).replace("msbctl: ", "", 1) + " — skipped")
+            continue
         if rule.startswith("allow") and re.search(r":tcp:80(\b|$)", rule):
             warn(f"{rule}: plaintext :80 is denied by `base` first, so it could never match — skipped")
             continue

@@ -10,6 +10,8 @@ release notes.
 
 ### Added
 - `msbctl port <name> 8080` publishes a host port to a server inside the sandbox, so `http://localhost:8080` reaches it (also under `msbctl edit` → Published ports); stored in the registry entry, bound to 127.0.0.1, needs a rebuild, and the server inside must listen on 0.0.0.0.
+### Fixed
+- `msbctl allow`, `edit` and `setup` accept `host:tcp:port` (and `host:udp:port`) instead of turning it into a rule msb refuses at create (`…:tcp:2222:tcp:443`); a rule already saved that way now fails before create, naming the file to fix it in.
 
 ## [0.2.1] - 2026-10-08
 
