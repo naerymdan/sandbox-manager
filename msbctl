@@ -24,14 +24,15 @@
     msbctl observe <name> [on|off|report]   stop blocking and record what is reached
     msbctl secret add|rm|ls <name>   extra tokens the sandbox can use but not see
     msbctl mount <name> SRC[:DEST][:ro|rw]   add an extra host folder (then rebuild)
-    msbctl exec <name> -- cmd…
+    msbctl exec <name> [flags] -- cmd…   shell and exec pass msb exec's flags on
     msbctl code <name>            open the editor on the project, on the host
     msbctl reclaim <name>         give the guest's page cache back to the host
 
 Inside a registered project folder the name can be left out where it is the
 only argument (`msbctl shell`, `msbctl stop`), and `.` stands for it where more
 follows (`msbctl exec . make`, `msbctl allow . example.com`); `msbctl exec --
-cmd` works too. shell and exec start in the same subfolder of /work.
+cmd` works too. shell and exec start in the same subfolder of the project
+inside the sandbox (/work, or the host's own path: `guest_path`).
 
 Runs on the HOST. Needs /dev/kvm, so not from inside a container.
 
@@ -133,23 +134,40 @@ GUEST_AGENT_SOCK = "/tmp/ssh-agent.sock"
 GUEST_PROFILE = "/opt/msb-profile"
 SSH_DIR = os.path.join(HOME, ".ssh")
 GUEST_CLAUDE_JSON = "/root/.claude.json"
-# What Claude Code checks locally before it stops showing first-run screens:
-# onboarding done, and the folder trusted. Kept in code rather than in profile/
-# on purpose: profile/ holds files that are REPLACED on every start, and
-# .claude.json must not be. Trust is keyed by absolute path and the project is
-# always mounted at /work, so one key covers every sandbox. See ensure_profile().
+# Where the project is mounted in the guest unless its registry entry says
+# otherwise with `guest_path` (or config.toml's [defaults] does): "/work",
+# "host" for the host's own path, or any absolute path. See
+# Sandbox.guest_project.
 GUEST_PROJECT = "/work"
-ONBOARDED_JSON = ('{"hasCompletedOnboarding":true,"projects":'
-                  '{"%s":{"hasTrustDialogAccepted":true}}}' % GUEST_PROJECT)
+
+
+# Guest folders Claude Code trusts besides the project, so the "do you trust
+# this folder?" prompt does not stop an agent (or an ACP session) started in
+# scratch space. Claude Code walks up from the working directory looking for a
+# trusted entry, so /tmp covers /tmp/anything — except a git checkout, where
+# only the checkout's own entry counts. The VM is the boundary either way.
+TRUSTED_GUEST_DIRS = ("/tmp",)
+
+
+def onboarded_json(*folders):
+    """What Claude Code checks locally before it stops showing first-run
+    screens: onboarding done, and the folders trusted. Kept in code rather than
+    in profile/ on purpose: profile/ holds files that are REPLACED on every
+    start, and .claude.json must not be. Trust is keyed by absolute path, so
+    it names the sandbox's own guest path. See ensure_profile()."""
+    return json.dumps({"hasCompletedOnboarding": True,
+                       "projects": {f: {"hasTrustDialogAccepted": True} for f in folders}})
+
+
 # Merges those keys into whatever is already there, so history and other state
-# in the file survive. Runs in the guest with the path and project as argv.
+# in the file survive. Runs in the guest with the path and the folders as argv.
 MERGE_CLAUDE_JSON = (
     "import json,os,sys\n"
-    "p,proj=sys.argv[1:3]\n"
+    "p,*folders=sys.argv[1:]\n"
     "try: d=json.load(open(p))\n"
     "except (OSError,ValueError): d={}\n"
     "d.setdefault('hasCompletedOnboarding',True)\n"
-    "d.setdefault('projects',{}).setdefault(proj,{})['hasTrustDialogAccepted']=True\n"
+    "for f in folders: d.setdefault('projects',{}).setdefault(f,{})['hasTrustDialogAccepted']=True\n"
     "json.dump(d,open(p+'.tmp','w'))\n"
     "os.replace(p+'.tmp',p)\n")
 
@@ -249,16 +267,25 @@ def render(template_name, **values):
 
 # ---------------------------------------------------------------------- shell
 
-def run(argv, env=None, check=True, capture=False, quiet=False):
-    """Run a command. `env` is merged over os.environ, never replaces it."""
+def run(argv, env=None, check=True, capture=False, quiet=False, to_stderr=False):
+    """Run a command. `env` is merged over os.environ, never replaces it.
+
+    stdin is always /dev/null: `msb exec` forwards it into the guest, so the
+    housekeeping execs ensure_running() does before `msbctl exec` hands over
+    would otherwise eat the input piped to it (`echo x | msbctl exec . -- cat`
+    printed nothing). `to_stderr` sends its stdout there instead, for steps
+    that must not write into the stdout `msbctl exec` hands to its command."""
     merged = dict(os.environ)
     if env:
         merged.update(env)
     if capture:
-        proc = subprocess.run(argv, env=merged, capture_output=True, text=True)
+        proc = subprocess.run(argv, env=merged, capture_output=True, text=True,
+                              stdin=subprocess.DEVNULL)
     else:
         out = subprocess.DEVNULL if quiet else None
-        proc = subprocess.run(argv, env=merged, stdout=out, stderr=out)
+        proc = subprocess.run(argv, env=merged, stdin=subprocess.DEVNULL,
+                              stdout=sys.stderr if to_stderr and not quiet else out,
+                              stderr=out)
     if check and proc.returncode != 0:
         detail = (proc.stderr or "").strip() if capture else ""
         die(f"{argv[0]} failed ({proc.returncode}): {' '.join(argv[1:3])} {detail}")
@@ -408,7 +435,34 @@ class Sandbox:
     def extra_mounts(self):
         """[(host path, guest path, "ro"|"rw")] from the registry entry. Host
         paths are machine-local, so these live there and never in a repo."""
-        return [parse_mount_spec(spec) for spec in self.entry.get("mounts", [])]
+        return [parse_mount_spec(spec, self.guest_project)
+                for spec in self.entry.get("mounts", [])]
+
+    @property
+    def guest_path_setting(self):
+        """`guest_path` as written: the entry's, else config.toml's [defaults]."""
+        return self.entry.get("guest_path", self.config.get("defaults", {})
+                              .get("guest_path", GUEST_PROJECT))
+
+    @property
+    def guest_project(self):
+        """Where the project is mounted inside the guest.
+
+        "host" means the host's own path, so absolute paths in compiler errors,
+        stack traces and an agent's output (an ACP client opening the files it
+        names) are valid on both sides. /work keeps the host's layout, your
+        username included, out of the guest. Machine-local on purpose: a host
+        path in the committed sandbox.toml would be one person's home folder.
+        Create-time, like every mount, and Claude Code keys its sessions and
+        memory by this path, so they do not follow a change.
+        """
+        raw = self.guest_path_setting
+        path = self.project if raw == "host" else raw
+        problem = guest_path_problem(path)
+        if problem:
+            die(f"{self.name}: guest_path {raw!r}: {problem} — fix it in "
+                f"{tilde(registry_path(self))}")
+        return os.path.normpath(path)
 
     @property
     def ssh_keys(self):
@@ -633,7 +687,7 @@ class Sandbox:
         flags = [
             # uid/gid presentation is what makes guest writes land as you on
             # the host. Without it you get files you cannot rm without help.
-            "--mount-dir", f"{self.project}:/work:uid={uid},gid={gid}",
+            "--mount-dir", f"{self.project}:{self.guest_project}:uid={uid},gid={gid}",
         ]
 
         for src, dest, mode in self.extra_mounts:
@@ -641,7 +695,7 @@ class Sandbox:
                 die(f"{self.name}: extra folder {tilde(src)} does not exist — "
                     f"fix `mounts` in {tilde(os.path.join(REGISTRY_DIR, self.name + '.toml'))}")
             # Read-only is `ro`. Read-write gets the same uid/gid presentation as
-            # /work, so what the guest writes is yours on the host.
+            # the project, so what the guest writes is yours on the host.
             flags += ["--mount-dir", f"{src}:{dest}:" + ("ro" if mode == "ro"
                                                          else f"uid={uid},gid={gid}")]
 
@@ -688,6 +742,9 @@ class Sandbox:
 
     def create_flags(self):
         flags = ["--conf", self.conf_path]
+        # After --conf, which it overrides: a project's committed dev.yaml says
+        # `workdir: /work`, and a sandbox mounted elsewhere must not start there.
+        flags += ["--workdir", self.guest_project]
         flags += self.mount_flags()
         for key, value in self.env_vars().items():
             flags += ["--env", f"{key}={value}"]
@@ -904,20 +961,20 @@ def resolve_here(raw):
     """`raw` unless it is omitted (None) or `.`, which mean this folder's sandbox."""
     if raw not in (None, "."):
         return raw
-    name, project = sandbox_here()
-    # On stderr, so `msbctl exec -- cmd` output stays clean in a pipe.
-    if sys.stderr.isatty():
-        print(f"{DIM}   {name}  ({tilde(project)}){RESET}", file=sys.stderr)
+    # Silently: a command's output should be only the command's, and the
+    # sandbox it ran in is one `msbctl ls` away if it is ever in doubt.
+    name, _project = sandbox_here()
     return name
 
 
 def guest_workdir(box):
-    """/work, or the same subfolder of it when the current directory is inside
-    the project — so `msbctl shell` from src/ lands in /work/src, like cd'ing."""
+    """The project inside the guest, or the same subfolder of it when the
+    current directory is inside the project — so `msbctl shell` from src/
+    lands in /work/src (or <guest path>/src), like cd'ing."""
     cwd = os.path.realpath(os.getcwd())
     if cwd.startswith(box.project.rstrip(os.sep) + os.sep):
-        return "/work/" + os.path.relpath(cwd, box.project)
-    return "/work"
+        return os.path.join(box.guest_project, os.path.relpath(cwd, box.project))
+    return box.guest_project
 
 
 # ------------------------------------------------------------------ per-boot
@@ -1433,7 +1490,8 @@ def ensure_keys_loaded(box):
     unnamed = [path for fp, _, _, path in scanned if fp is None]
 
     def add(path):
-        note(f"adding {tilde(path)} to the ssh-agent")
+        # stderr, like warn(): this runs before `msbctl exec` hands over its stdout.
+        print(f"   adding {tilde(path)} to the ssh-agent", file=sys.stderr)
         ok = subprocess.run(["ssh-add", path]).returncode == 0
         if not ok:
             warn(f"could not add {tilde(path)} — the sandbox starts without it")
@@ -1554,7 +1612,7 @@ def ensure_profile(box):
                   copy is not.
 
     .claude.json  MERGED every start, never replaced: onboarding is set only
-                  if absent, and /work is marked trusted. Claude Code keeps
+                  if absent, and the project and /tmp are marked trusted. Claude Code keeps
                   per-sandbox state in this file, so rewriting it wholesale
                   would quietly discard that. It lives in the sandbox's
                   writable layer and so is gone after every rebuild, which is
@@ -1583,10 +1641,11 @@ def ensure_profile(box):
     # first interactive use. Verified by hand in a live sandbox.
     # python3 is there once the bootstrap has run; before that (or if it
     # failed) fall back to seeding the file if absent.
+    trusted = [box.guest_project, *TRUSTED_GUEST_DIRS]
     script.append(f"if command -v python3 >/dev/null; then "
-                  f"python3 -c \"$1\" {GUEST_CLAUDE_JSON} {GUEST_PROJECT}; "
+                  f"python3 -c \"$1\" {GUEST_CLAUDE_JSON} {' '.join(shq(f) for f in trusted)}; "
                   f"else [ -f {GUEST_CLAUDE_JSON} ] || "
-                  f"printf '%s\\n' '{ONBOARDED_JSON}' > {GUEST_CLAUDE_JSON}; fi")
+                  f"printf '%s\\n' {shq(onboarded_json(*trusted))} > {GUEST_CLAUDE_JSON}; fi")
 
     run(["msb", "exec", box.name, "--no-tty", "--", "sh", "-c", " ; ".join(script),
          "_", MERGE_CLAUDE_JSON], check=False, quiet=True)
@@ -1653,10 +1712,12 @@ def ensure_running(box, table=None):
     if state == "absent":
         die(f"no sandbox named {box.name} — run: msbctl rebuild {box.name}")
     if state != "running":
-        say(f"Starting {box.name}")
+        # On stderr: `msbctl exec`'s stdout belongs to its command, which may
+        # be a pipe or a protocol stream (ACP) that a stray line would corrupt.
+        print(f"\n{BOLD}== Starting {box.name}{RESET}", file=sys.stderr)
         _, env = box.secret_env()
         ensure_agent_filter(box)
-        run(["msb", "start", box.name], env=env)
+        run(["msb", "start", box.name], env=env, to_stderr=True)
     ensure_agent_filter(box)
     ensure_bridge(box)
     ensure_profile(box)
@@ -1737,7 +1798,7 @@ def do_create(box):
 def bootstrap_payload(box):
     """Ship bootstrap.sh in over stdin rather than mounting it.
 
-    The guest can only see /work and the profile directory, and bootstrap.sh
+    The guest can only see the project and the profile directory, and bootstrap.sh
     lives in neither — this file is in the msb-manager checkout, which is
     deliberately not mounted. Writing it in and running it keeps the manager's
     own code outside every sandbox's reach.
@@ -1757,6 +1818,7 @@ def bootstrap_payload(box):
         "MSB_WANT_CLAUDE": "0" if boot.get("claude") is False else "1",
         "MSB_WANT_BUN": "1" if boot.get("bun") else "0",
         "MSB_WANT_GITLEAKS": "1" if boot.get("gitleaks") else "0",
+        "MSB_PROJECT_DIR": box.guest_project,
         "MSB_PROJECT_SCRIPT": boot.get("script", ""),
         "MSB_CONTAINERS_STORAGE": boot.get("containers_storage", ""),
         "MSB_CACHE_LINKS": " ".join(f"{src}:{dest}" for src, dest in box.cache_links),
@@ -2003,12 +2065,64 @@ def cmd_move(args, config):
         note(f"until then it still sees the old folder: `msbctl rebuild {box.name}`")
 
 
+# `shell` and `exec` pass every flag msbctl does not use itself straight to
+# `msb exec` (split off in split_msb_flags(), before argparse sees them), so
+# `-u root`, `--timeout 5m`, `-e KEY=value` and whatever later msb versions add
+# work without a table here to keep in step. msbctl adds `--tty` (shell) and
+# `-w` itself, and msb refuses either twice, so those are only left out when
+# the caller already gave one.
+MSB_EXEC_HINT = ("any other flag goes to `msb exec` as is (`msb exec --help` lists "
+                 "them), e.g. -u root, --timeout 5m, -e KEY=value; give them after "
+                 "the name, and for exec before --")
+
+
+def split_msb_flags(argv, verb):
+    """argv with the msb flags of `exec`/`shell` at argv[verb] taken out, and
+    those flags. They follow the name (which may be left out); for exec they
+    end at `--`. `-h` stays behind for argparse. An exec with no name before
+    its flags or `--` gets `.`, this folder's sandbox."""
+    head, rest = argv[:verb + 1], argv[verb + 1:]
+    name = []
+    if rest and not rest[0].startswith("-"):
+        name, rest = rest[:1], rest[1:]
+    tail = []
+    if argv[verb] == "exec":
+        if "--" in rest:
+            cut = rest.index("--")
+        elif rest and rest[0].startswith("-"):
+            cut = len(rest)
+        else:
+            return argv, []          # `exec . make -j4`: all of it is the command
+        if rest[:1] and not rest[0].startswith("-"):
+            return argv, []          # `exec x git log -- file`: so is this
+        rest, tail = rest[:cut], rest[cut:]
+        name = name or ["."]
+    helps = [a for a in rest if a in ("-h", "--help")]
+    flags = [a for a in rest if a not in ("-h", "--help")]
+    return head + helps + name + tail, flags
+
+
+def gave_flag(flags, short, long):
+    """True if `flags` already has this option, in any of its spellings."""
+    return any(f == long or f.startswith(long + "=")
+               or (short and f.startswith(short)) for f in flags)
+
+
+def msb_exec_argv(box, flags, tty=False):
+    cmd = ["msb", "exec", box.name]
+    if tty and not any(gave_flag(flags, s, l) for s, l in (
+            ("-t", "--tty"), (None, "--no-tty"), (None, "--stream"))):
+        cmd.append("--tty")
+    cmd += ["-e", f"SSH_AUTH_SOCK={GUEST_AGENT_SOCK}"]
+    if not gave_flag(flags, "-w", "--workdir"):
+        cmd += ["-w", guest_workdir(box)]
+    return cmd + flags
+
+
 def cmd_shell(args, config):
     box = Sandbox(args.name, config)
     ensure_running(box)
-    os.execvp("msb", ["msb", "exec", box.name, "--tty",
-                      "-e", f"SSH_AUTH_SOCK={GUEST_AGENT_SOCK}",
-                      "-w", guest_workdir(box), "--", "bash", "-l"])
+    os.execvp("msb", [*msb_exec_argv(box, args.msb_flags, tty=True), "--", "bash", "-l"])
 
 
 def cmd_exec(args, config):
@@ -2019,9 +2133,7 @@ def cmd_exec(args, config):
     if not command:
         die("exec needs a command")
     ensure_running(box)
-    os.execvp("msb", ["msb", "exec", box.name,
-                      "-e", f"SSH_AUTH_SOCK={GUEST_AGENT_SOCK}",
-                      "-w", guest_workdir(box), "--", *command])
+    os.execvp("msb", [*msb_exec_argv(box, args.msb_flags), "--", *command])
 
 
 def cmd_reclaim(args, config):
@@ -2575,12 +2687,41 @@ def _observe_report(box):
 
 
 # Guest paths the manager owns. A folder mounted over or inside one of these
-# would shadow the project, the Claude state or podman's storage.
-RESERVED_GUEST = ("/work", "/root/.claude", "/opt/msb-profile", "/var/lib/containers",
+# would shadow the Claude state, the profile or podman's storage. The project's
+# own guest path is per sandbox, so callers add it (see parse_mount_spec()).
+RESERVED_GUEST = ("/root/.claude", "/opt/msb-profile", "/var/lib/containers",
                   "/root/.ssh", "/tmp/ssh-agent.sock")
+# Where the project cannot go: inside the system, or over a folder whose
+# contents the image needs (mounting at /home would hide every home in it).
+GUEST_SYSTEM = ("/bin", "/boot", "/dev", "/etc", "/lib", "/lib32", "/lib64",
+                "/proc", "/run", "/sbin", "/sys", "/usr")
+GUEST_SHADOWED = ("/", "/home", "/media", "/mnt", "/opt", "/root", "/srv", "/tmp", "/var")
 
 
-def parse_mount_spec(spec):
+def _overlaps(a, b):
+    a, b = a.rstrip("/") or "/", b.rstrip("/") or "/"
+    return a == b or a.startswith(b + "/") or b.startswith(a + "/")
+
+
+def guest_path_problem(path):
+    """Why `path` cannot be where the project is mounted in the guest, or None."""
+    if not path.startswith("/"):
+        return "not an absolute path"
+    if ":" in path:
+        return "it contains ':', which msb's mount syntax cannot carry"
+    path = os.path.normpath(path)
+    if path in GUEST_SHADOWED:
+        return f"mounting over {path} would hide what the image keeps there"
+    for system in GUEST_SYSTEM:
+        if path == system or path.startswith(system + "/"):
+            return f"it is inside {system}, a system folder"
+    for reserved in RESERVED_GUEST + (CACHE_MOUNT,):
+        if _overlaps(path, reserved):
+            return f"it overlaps {reserved}, which msbctl manages"
+    return None
+
+
+def parse_mount_spec(spec, project_dest=GUEST_PROJECT):
     """`SRC[:DEST][:ro|rw]` -> (absolute host path, guest path, "ro"|"rw").
     DEST defaults to /mnt/<name>; the mode defaults to ro, because writing to a
     host folder from a sandbox should be something you asked for."""
@@ -2594,18 +2735,47 @@ def parse_mount_spec(spec):
     dest = parts[1] if len(parts) > 1 else "/mnt/" + os.path.basename(src.rstrip("/"))
     if len(parts) > 2 or not dest.startswith("/"):
         die(f"mount {spec!r}: the guest path must be absolute — SRC:/guest/path[:ro|rw]")
+    if _overlaps(dest, project_dest):
+        die(f"mount {spec!r}: {dest} overlaps the project, which is mounted at {project_dest}")
     for reserved in RESERVED_GUEST:
-        if dest.rstrip("/") == reserved or dest.startswith(reserved + "/") or reserved.startswith(dest.rstrip("/") + "/"):
+        if _overlaps(dest, reserved):
             die(f"mount {spec!r}: {dest} overlaps {reserved}, which msbctl manages")
     return src, dest, mode
 
 
-def pick_mounts():
+def pick_guest_path(project, current):
+    """Wizard: where the project appears inside the sandbox. Returns the value
+    for `guest_path`: "host", "/work" or an absolute path. `project` is None
+    when choosing the default for new sandboxes."""
+    say("Project path inside the sandbox")
+    note("The same path as on the host makes absolute paths in errors and agent")
+    note("output open on the host as they are; /work keeps your folder layout and")
+    note("username out of the sandbox. Claude Code keeps its sessions per path.")
+    custom = current if current not in ("host", GUEST_PROJECT) else ""
+    options = [f"same as on the host   {project or '(each project its own)'}",
+               f"{GUEST_PROJECT}",
+               "custom" + (f"                {custom}" if custom else "")]
+    default = 0 if current == "host" else 1 if current == GUEST_PROJECT else 2
+    while True:
+        choice = choose_one("project path in the sandbox", options, default)
+        if choice.startswith("same"):
+            value, path = "host", project
+        elif choice == GUEST_PROJECT:
+            value = path = GUEST_PROJECT
+        else:
+            value = path = os.path.normpath(ask("path inside the sandbox", custom or "/"))
+        problem = guest_path_problem(path) if path else None
+        if not problem:
+            return value
+        warn(f"{path}: {problem}")
+
+
+def pick_mounts(project_dest=GUEST_PROJECT):
     """Wizard: any number of extra host folders, each read-only or read-write.
     Returns spec strings for the registry entry."""
     say("Extra folders")
     note("Other host folders to mount into the sandbox (reference repos, data).")
-    note("The project itself is already mounted at /work.")
+    note(f"The project itself is already mounted at {project_dest}.")
     specs, taken = [], set()
     while confirm("add a folder?" if not specs else "add another?"):
         raw = ask("host path")
@@ -2621,7 +2791,7 @@ def pick_mounts():
             "read-write   writes land in the host folder, as you"], 0).startswith("read-write") else "ro"
         spec = f"{raw.rstrip('/') or '/'}:{dest}:{mode}"
         try:
-            parse_mount_spec(spec)
+            parse_mount_spec(spec, project_dest)
         except SystemExit as exc:
             warn(str(exc).replace("msbctl: ", "", 1))
             continue
@@ -2646,7 +2816,7 @@ def cmd_mount(args, config):
     are fixed at create time, so this records it; --rebuild applies it now."""
     box = Sandbox(args.name, config)
     spec = args.spec if args.spec.rstrip().endswith(("ro", "rw")) else args.spec + (":rw" if args.rw else ":ro")
-    src, dest, mode = parse_mount_spec(spec)
+    src, dest, mode = parse_mount_spec(spec, box.guest_project)
     if not os.path.isdir(src):
         die(f"{tilde(src)} is not a directory")
     entry_path = os.path.join(REGISTRY_DIR, f"{box.name}.toml")
@@ -3183,6 +3353,7 @@ def section_defaults(config, ctx):
             f"projects folder         {d.get('workspaces') or '(unset: the current directory)'}",
             f"egress groups           {', '.join(d.get('rule_groups', [])) or 'none'}",
             f"size                    {d.get('cpus', '?')} cpu, {d.get('memory', '?')}, {d.get('root_disk', '?')} disk",
+            f"project path in guest   {d.get('guest_path', GUEST_PROJECT)}",
             "back"], 0)
         if action.startswith("projects"):
             note("`msbctl add myproject` creates it inside this folder.")
@@ -3200,6 +3371,9 @@ def section_defaults(config, ctx):
             disk = pick_size("root disk", ROOT_DISKS, d.get("root_disk", "16G"))
             for key, value in (("cpus", plan["cpus"]), ("memory", plan["memory"]), ("root_disk", disk)):
                 set_toml_key(CONFIG_FILE, key, value, table="defaults")
+        elif action.startswith("project path"):
+            chosen = pick_guest_path(None, d.get("guest_path", GUEST_PROJECT))
+            set_toml_key(CONFIG_FILE, "guest_path", chosen, table="defaults")
         else:
             return
 
@@ -3465,7 +3639,7 @@ def _summary_folders(box):
 def section_folders(box, config, ctx):
     current = list(box.entry.get("mounts", []))
     keep = toggle_list("keep these folders", current, current) if current else []
-    added = pick_mounts()
+    added = pick_mounts(box.guest_project)
     if set_toml_key(registry_path(box), "mounts", keep + added):
         ctx["rebuild"].add("extra folders")
 
@@ -3652,7 +3826,7 @@ def section_identity(box, config, ctx):
 
 
 def _summary_place(box):
-    return f"{box.name}, {tilde(box.project)}"
+    return f"{box.name}, {tilde(box.project)} at {box.guest_project}"
 
 
 def section_place(box, config, ctx):
@@ -3661,6 +3835,11 @@ def section_place(box, config, ctx):
     raw = ask("project folder", tilde(box.project))
     if resolve_project(raw, config) != box.project and move_project(box, raw, config):
         ctx["rebuild"].add("project folder")
+        box = Sandbox(box.name, config)
+    current = box.guest_path_setting
+    chosen = pick_guest_path(box.project, current)
+    if chosen != current and set_toml_key(registry_path(box), "guest_path", chosen):
+        ctx["rebuild"].add("project path in the sandbox")
         box = Sandbox(box.name, config)
     new = ask("sandbox name", box.name)
     if new == box.name:
@@ -3963,6 +4142,7 @@ def cmd_show(args, config):
 
     say(f"{box.name}  [{state_of(box.name, table)}]")
     note(f"project    {tilde(box.project)}")
+    note(f"in guest   {box.guest_project}")
     note(f"repo       {box.repo or '(no GitHub remote)'}")
     note(f"conf       {box.conf}")
     note(f"image      {box.image}")
@@ -4192,7 +4372,7 @@ def probe_installed(name, table):
     script = "; ".join(f"echo {comp}=$({cmd} 2>/dev/null | head -1)"
                        for comp, (cmd, _) in GUEST_PROBES.items())
     proc = subprocess.run(["msb", "exec", name, "--no-tty", "--", "sh", "-c", script],
-                          capture_output=True, text=True)
+                          capture_output=True, text=True, stdin=subprocess.DEVNULL)
     found = {}
     for line in proc.stdout.splitlines():
         comp, _, raw = line.partition("=")
@@ -4263,7 +4443,10 @@ def refresh_versions(names, config, cache):
 # Each entry updates ONE component in a running guest. Everything they reach is
 # already in the `base` or `github` rule groups; none needs a new egress rule.
 UPDATERS = {
-    "claude": "npm install -g @anthropic-ai/claude-code@latest >/dev/null && claude --version",
+    # The ACP adapter rides along with claude, as in bootstrap.sh.
+    "claude": ("npm install -g @anthropic-ai/claude-code@latest "
+               "@agentclientprotocol/claude-agent-acp@latest >/dev/null "
+               "&& claude --version"),
     "apt": "apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get -y -qq upgrade",
 }
 
@@ -4306,7 +4489,7 @@ def cmd_update(args, config):
             note(f"pinned {comp}={target} in the registry entry, so a rebuild "
                  "reproduces it")
         elif comp == "claude":
-            note("claude-code is installed unpinned, so a rebuild picks up "
+            note("claude-code and claude-agent-acp are installed unpinned, so a rebuild picks up "
                  "whatever is latest then — nothing to record")
 
 
@@ -5138,6 +5321,9 @@ def cmd_add(args, config):
                 note(f"cloned into {tilde(target)}")
                 found = checkouts(project)
 
+    guest_path = pick_guest_path(project, config.get("defaults", {})
+                                 .get("guest_path", GUEST_PROJECT))
+
     say("Git identity")
     idents = config.get("identities", {})
     identity = ""
@@ -5174,7 +5360,7 @@ def cmd_add(args, config):
     pick_resources(plan, config)
     pick_disks(plan, config)
     pick_caches(plan)
-    mounts = pick_mounts()
+    mounts = pick_mounts(project if guest_path == "host" else guest_path)
     secrets = pick_secrets(config)
     chosen = plan["groups"]
     packages = plan["packages"]
@@ -5206,6 +5392,7 @@ def cmd_add(args, config):
     today = dt.date.today().isoformat()
     with open(entry_path, "w", encoding="utf-8") as fh:
         fh.write(render("registry.toml.in", NAME=name, PROJECT=project,
+                        GUEST_PATH=guest_path,
                         REPO=repo, DATE=today, IDENTITY=identity,
                         SSH_KEYS=format_ssh_keys(ssh_keys),
                         MOUNTS=format_list("mounts", mounts, '# mounts = ["~/reference:/mnt/reference:ro"]'),
@@ -5350,7 +5537,7 @@ def guest_usage(name):
         "printf 'CPUS=%s\\n' \"$(nproc)\""
     )
     proc = subprocess.run(["msb", "exec", name, "--no-tty", "--", "sh", "-c", probe],
-                          capture_output=True, text=True)
+                          capture_output=True, text=True, stdin=subprocess.DEVNULL)
     if proc.returncode != 0:
         return None
     out = proc.stdout.replace("\r", " ")
@@ -5626,13 +5813,15 @@ def main():
         p.set_defaults(func=func)
 
     # Single-name on purpose: each of these hands the terminal to one thing.
-    for verb, func, helptext in (
-            ("code", cmd_code, "open the editor on the project"),
-            ("shell", cmd_shell, "interactive shell"),
-    ):
-        p = sub.add_parser(verb, help=helptext)
-        p.add_argument("name", nargs="?", help=NAME_HELP)
-        p.set_defaults(func=func)
+    p = sub.add_parser("code", help="open the editor on the project")
+    p.add_argument("name", nargs="?", help=NAME_HELP)
+    p.set_defaults(func=cmd_code)
+
+    p = sub.add_parser("shell", help="interactive shell",
+                       usage="msbctl shell [name] [msb exec flags…]",
+                       epilog=MSB_EXEC_HINT)
+    p.add_argument("name", nargs="?", help=NAME_HELP)
+    p.set_defaults(func=cmd_shell, msb_flags=[])
 
     # Repeatable. rebuild does not prompt; purge still does, per sandbox, and
     # the confirmation names what it is about to destroy, so it must stay
@@ -5726,10 +5915,12 @@ def main():
     p.add_argument("name")
     p.set_defaults(func=cmd_agent_filter)
 
-    p = sub.add_parser("exec", help="run a command in a sandbox")
+    p = sub.add_parser("exec", help="run a command in a sandbox",
+                       usage="msbctl exec [name|.] [msb exec flags…] [--] command…",
+                       epilog=MSB_EXEC_HINT)
     p.add_argument("name", help=DOT_HELP)
     p.add_argument("command", nargs=argparse.REMAINDER)
-    p.set_defaults(func=cmd_exec)
+    p.set_defaults(func=cmd_exec, msb_flags=[])
 
     p = sub.add_parser("update", help="update components in place")
     p.add_argument("names", nargs="*", metavar="name", help=NAMES_HELP)
@@ -5739,12 +5930,16 @@ def main():
     p.set_defaults(func=cmd_update)
 
     argv = sys.argv[1:]
-    # `msbctl exec -- cmd`: no name before the separator means this folder's
-    # sandbox. argparse would otherwise take the command's first word as a name.
+    # msb's own flags for `exec`/`shell` are taken out before argparse, which
+    # would otherwise reject them or take a flag's value for the name; this
+    # also turns `msbctl exec -- cmd` into `exec . -- cmd`.
     verb = next((i for i, a in enumerate(argv) if not a.startswith("-")), None)
-    if verb is not None and argv[verb] == "exec" and argv[verb + 1:verb + 2] == ["--"]:
-        argv.insert(verb + 1, ".")
+    msb_flags = []
+    if verb is not None and argv[verb] in ("exec", "shell"):
+        argv, msb_flags = split_msb_flags(argv, verb)
     args = parser.parse_args(argv)
+    if msb_flags:
+        args.msb_flags = msb_flags
 
     # Checked for every subcommand, including `add`. Registering a project from
     # inside a container would write a registry entry naming a path that only

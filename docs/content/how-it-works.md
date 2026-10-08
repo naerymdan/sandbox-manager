@@ -104,10 +104,11 @@ collects the rest into a single rebuild offer when you're done.
 2. links the package caches and sets up podman storage, if the project uses
    them;
 3. installs node from NodeSource, verifying the signing key's fingerprint, then
-   Claude Code, unless the project turned it off;
+   Claude Code and its ACP adapter (`claude-agent-acp`), unless the project
+   turned it off;
 4. installs `gh`, and `bun` and `gitleaks` if asked for, from pinned,
    checksum-verified GitHub releases;
-5. marks `/work` as a git `safe.directory`, then runs the project's own setup
+5. marks the project folder as a git `safe.directory`, then runs the project's own setup
    script if it names one.
 
 It's deliberately not `set -e`. Every step records its outcome and the failures

@@ -42,7 +42,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## The current folder names a sandbox
 
-`sandbox_here()` resolves an omitted name (or `.`) to the registered sandbox whose `project` contains the cwd, deepest wins; the registry decides, never a `.msb/` alone, and two entries on one folder are an error. `main()` applies `resolve_here()` to `args.name`/`args.names` for every verb but `_agent-filter`, and rewrites `exec --` to `exec . --`. A name is optional (`nargs="?"`/`"*"`) ONLY where it is the sole positional; where another positional follows it stays required and `.` is the shorthand, so nothing is ever ambiguous (`observe on` must not mean the sandbox "on"). `guest_workdir()` maps the cwd to the same subfolder of `/work` for `shell`/`exec`.
+`sandbox_here()` resolves an omitted name (or `.`) to the registered sandbox whose `project` contains the cwd, deepest wins; the registry decides, never a `.msb/` alone, and two entries on one folder are an error. `main()` applies `resolve_here()` to `args.name`/`args.names` for every verb but `_agent-filter`, and rewrites `exec --` to `exec . --`. A name is optional (`nargs="?"`/`"*"`) ONLY where it is the sole positional; where another positional follows it stays required and `.` is the shorthand, so nothing is ever ambiguous (`observe on` must not mean the sandbox "on"). `guest_workdir()` maps the cwd to the same subfolder of the guest project path for `shell`/`exec`.
+
+## Where the project is mounted
+
+`Sandbox.guest_project` is the registry entry's `guest_path` (`"host"` = the host path, `"/work"`, or an absolute path; default from `[defaults]`, else `/work`), validated by `guest_path_problem()`. Registry-only — a host path must never reach the committed `sandbox.toml`. Everything that names the guest project goes through it: the mount, `--workdir` at create (overrides the committed `dev.yaml`), `guest_workdir()`, Claude's folder trust in `ensure_profile()`, bootstrap's `MSB_PROJECT_DIR`, and the extra-mount overlap check (`parse_mount_spec(spec, project_dest)`). Never hard-code `/work`; use `GUEST_PROJECT` only as the default.
 
 ## Configuration model
 

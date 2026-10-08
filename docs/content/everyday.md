@@ -37,7 +37,8 @@ It is designed never to guess:
   project: each is an error that says what to do.
 
 `shell` and `exec` also start in the matching subfolder: from `~/proj/src`
-you land in `/work/src`.
+you land in `/work/src` (or in `~/proj/src` itself, if the sandbox uses the
+[host's own path](advanced.md#where-the-project-appears-in-the-sandbox)).
 
 ## shell, exec, code
 

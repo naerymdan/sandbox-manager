@@ -11,8 +11,9 @@ two disagree.
 
 ## Where you are
 
-A microVM, not a container. The project is mounted read-write at `/work` and
-presented as the host user, so files you create are owned by them and they can
+A microVM, not a container. The project is mounted read-write at `/work` (or,
+if this sandbox was set up that way, at the same path as on the host; a new
+shell starts there) and presented as the host user, so files you create are owned by them and they can
 delete them without `sudo`. You run as root inside the guest; that is a
 property of the VM and not a privilege over the host.
 

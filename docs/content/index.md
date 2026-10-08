@@ -61,7 +61,7 @@ of not being touched.
             └─▶ the internet, only where a rule allows
 ```
 
-The VM sees your project at `/work`, with your own file ownership, so whatever
+The VM sees your project at `/work` (or at its host path, if you choose), with your own file ownership, so whatever
 the agent writes is yours on the host. Everything else stays on the host: your
 config, your tokens and your keys.
 

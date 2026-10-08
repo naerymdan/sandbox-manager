@@ -8,8 +8,18 @@ release notes.
 
 ## [Unreleased]
 
+### Added
+- `msbctl shell` and `msbctl exec` pass any flag after the name to `msb exec` as is (`-u root`, `--timeout 5m`, `-e KEY=value`, …; `msb exec --help` lists them); for `exec`, end them with `--`.
+- The project can appear inside the sandbox at its host path (or any path) instead of `/work`, so paths in errors and agent output open on the host as they are: `msbctl add` asks, `msbctl edit` → Name & folder changes it (needs a rebuild), and `setup` sets the default.
+- Choosing Claude Code also installs its ACP adapter, `claude-agent-acp`, so an editor can drive Claude in the sandbox over stdio (`msbctl exec . -- claude-agent-acp`); `msbctl update <name> -c claude` updates both, and existing sandboxes get it on a rebuild or that update.
+- Claude Code in a sandbox trusts `/tmp` as well as the project, so an agent or ACP session started in scratch space is not stopped by the trust prompt; takes effect on the next start.
+
 ### Changed
 - The project moved to https://github.com/runoverlabs/sandbox-manager and its documentation to https://sandbox-manager.runoverlabs.dev/; old GitHub links and existing installs keep working through GitHub's redirects, but the old github.io docs address does not.
+- Naming the sandbox by the current folder (`.` or leaving the name out) no longer prints the sandbox it resolved to before running the command.
+
+### Fixed
+- Input piped into `msbctl exec` (`echo hi | msbctl exec . -- cat`) reaches the command instead of being swallowed, and starting a stopped sandbox no longer writes to its stdout, so it can carry a stream such as ACP.
 
 ## [0.2.0] - 2026-10-07
 

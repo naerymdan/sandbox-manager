@@ -24,7 +24,9 @@ cpus: {{CPUS}}
 # and is never returned on its own — `msbctl reclaim {{NAME}}` is the fix.
 memory: "{{MEMORY}}"
 
-workdir: /work
+# No workdir here: msbctl passes --workdir at create, set to where the project
+# is mounted (/work, or the host's own path — `guest_path` in the registry
+# entry), and that flag wins over this file.
 
 # env: project-specific variables only.
 #

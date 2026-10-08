@@ -31,6 +31,12 @@
 # one here". Set to "" to resolve bare names against the CWD instead.
 workspaces = "~/workspaces"
 
+# Where a new sandbox mounts its project, unless `msbctl add` is told
+# otherwise: "/work", "host" for the host's own path (absolute paths in errors
+# and agent output then work on both sides), or any absolute path. Each
+# sandbox records its own as `guest_path` in its registry entry.
+guest_path = "/work"
+
 # Pinned tag@digest. Pinning by digest is the point: a tag moves, a digest does
 # not, and a sandbox whose base image changed under it is a debugging session
 # nobody wanted. `msbctl add` offers to resolve the digest for you.

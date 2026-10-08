@@ -32,7 +32,9 @@ msbctl add [dir]
 Register a project with the setup wizard. Nothing is started. A bare name
 resolves under your workspaces folder and is created if missing; a path
 starting with `/`, `~`, `./` or `../` is taken as written. Without an argument
-it asks, defaulting to the current directory. See
+it asks, defaulting to the current directory. It also asks where the project
+appears inside the sandbox: [`/work`, the host's own path, or a custom
+one](advanced.md#where-the-project-appears-in-the-sandbox). See
 [Get started](quickstart.md#2-register-a-project).
 
 ### `msbctl ls`
@@ -168,22 +170,41 @@ second.
 ### `msbctl shell`
 
 ```text
-msbctl shell [name]
+msbctl shell [name] [msb exec flags…]
 ```
 
 An interactive login shell, with the SSH agent wired up, starting in the
-subfolder of `/work` that matches your current directory. Starts a stopped
-sandbox; never creates one.
+subfolder of the project that matches your current directory (under `/work`,
+or wherever [`guest_path`](advanced.md#where-the-project-appears-in-the-sandbox)
+puts it). Starts a stopped
+sandbox; never creates one. Flags after the name go to `msb exec` as they are
+(see [Passing flags to `msb exec`](#passing-flags-to-msb-exec)).
 
 ### `msbctl exec`
 
 ```text
 msbctl exec name|. [--] command…
+msbctl exec [name|.] [msb exec flags…] -- command…
 msbctl exec -- command…
 ```
 
 Run one command in the sandbox, like `shell` but non-interactive. `exec -- cmd`
 is the short form for the current folder's sandbox.
+
+#### Passing flags to `msb exec`
+
+`shell` and `exec` hand any flag they do not use themselves to `msb exec`
+unchanged, so everything `msb exec --help` lists works. Put the flags after
+the name, and for `exec` end them with `--`:
+
+```text
+$ msbctl shell -u root                      # this folder's sandbox, as root
+$ msbctl exec myproject --timeout 5m -- make test
+$ msbctl exec -e DEBUG=1 --no-tty -- ./run.sh
+```
+
+`-w`/`--workdir` replaces the matching subfolder of the project, and for `shell`,
+`--no-tty` or `--stream` replaces the terminal it would otherwise allocate.
 
 ### `msbctl code`
 

@@ -17,10 +17,11 @@
 #   MSB_WANT_GITLEAKS     1 to install gitleaks
 #   MSB_CONTAINERS_STORAGE  "fuse-overlayfs" to point podman at it
 #   MSB_CACHE_LINKS       space-separated MOUNT:DEST pairs; DEST becomes a symlink to MOUNT
-#   MSB_PROJECT_SCRIPT    path under /work to run last, if any
+#   MSB_PROJECT_DIR       where the project is mounted (default /work)
+#   MSB_PROJECT_SCRIPT    path under the project to run last, if any
 #
 # msbctl writes this file into the guest over stdin rather than mounting it.
-# The guest can see /work and the read-only profile directory and nothing else,
+# The guest can see the project and the read-only profile directory and nothing else,
 # and keeping the manager's own code out of every sandbox is the point.
 #
 # Deliberately not `set -e`. Every step runs, records its own outcome, and the
@@ -37,6 +38,7 @@ EXTRA_PACKAGES="${MSB_EXTRA_PACKAGES:-}"
 WANT_CLAUDE="${MSB_WANT_CLAUDE:-1}"
 WANT_BUN="${MSB_WANT_BUN:-0}"
 WANT_GITLEAKS="${MSB_WANT_GITLEAKS:-0}"
+PROJECT_DIR="${MSB_PROJECT_DIR:-/work}"
 PROJECT_SCRIPT="${MSB_PROJECT_SCRIPT:-}"
 CONTAINERS_STORAGE="${MSB_CONTAINERS_STORAGE:-}"
 CACHE_LINKS="${MSB_CACHE_LINKS:-}"
@@ -63,7 +65,7 @@ step() {
 	return 0
 }
 
-[ -d /work ] || { echo "bootstrap: /work is not mounted" >&2; exit 1; }
+[ -d "$PROJECT_DIR" ] || { echo "bootstrap: $PROJECT_DIR is not mounted" >&2; exit 1; }
 
 export DEBIAN_FRONTEND=noninteractive
 
@@ -170,6 +172,20 @@ do_claude() {
 	claude --version
 }
 
+# The ACP adapter, so an editor (Zed and friends) can drive Claude in this
+# sandbox over stdio: `msbctl exec . -- claude-agent-acp`. Installed whenever
+# claude is, unpinned for the same reason. Also pure npm, `engines: node >=22`,
+# registry.npmjs.org only.
+do_claude_acp() {
+	command -v claude-agent-acp >/dev/null && return 0
+	if ! command -v npm >/dev/null; then
+		echo "   npm is absent because the node step did not succeed" >&2
+		return 1
+	fi
+	npm install -g @agentclientprotocol/claude-agent-acp || return 1
+	command -v claude-agent-acp
+}
+
 do_bun() {
 	command -v bun >/dev/null && { bun --version; return 0; }
 	local arch base zip tmp rc
@@ -240,14 +256,14 @@ do_safe_directories() {
 	# names the symptom rather than the cause.
 	#
 	# TWO LAYOUTS, both normal:
-	#   /work/.git          the project is the repo
-	#   /work/<name>/.git   the project CONTAINS repos, with .msb/ beside them
+	#   <project>/.git          the project is the repo
+	#   <project>/<name>/.git   the project CONTAINS repos, with .msb/ beside them
 	#
 	# One level only, and each checkout is added by name rather than with a
 	# wildcard, so the exemption stays a list of named paths.
-	git config --global --add safe.directory /work || return 1
+	git config --global --add safe.directory "$PROJECT_DIR" || return 1
 	local repo
-	for repo in /work/*/; do
+	for repo in "$PROJECT_DIR"/*/; do
 		repo="${repo%/}"
 		[ -d "$repo/.git" ] && { git config --global --add safe.directory "$repo" || return 1; }
 	done
@@ -255,9 +271,9 @@ do_safe_directories() {
 }
 
 do_project_script() {
-	local script="/work/$PROJECT_SCRIPT"
+	local script="$PROJECT_DIR/$PROJECT_SCRIPT"
 	[ -f "$script" ] || { echo "   $script not found" >&2; return 1; }
-	cd /work && bash "$script"
+	cd "$PROJECT_DIR" && bash "$script"
 }
 
 step required "apt packages${EXTRA_PACKAGES:+ (+$EXTRA_PACKAGES)}" -- do_apt
@@ -309,6 +325,7 @@ do_cache_links() {
 if [ "$WANT_CLAUDE" = 1 ]; then
 	step required "node ${NODE_MAJOR}" -- do_node
 	step optional "claude-code"        -- do_claude
+	step optional "claude-agent-acp"   -- do_claude_acp
 else
 	step optional "node ${NODE_MAJOR}" -- do_node
 fi
@@ -322,7 +339,7 @@ step optional "gh ${GH_VERSION}" -- do_gh
 
 [ "$WANT_GITLEAKS" = 1 ] && step optional "gitleaks ${GITLEAKS_VERSION}" -- do_gitleaks
 
-# Required: without it git refuses every repo under /work.
+# Required: without it git refuses every repo in the project.
 step required "git safe.directory" -- do_safe_directories
 
 [ -n "$PROJECT_SCRIPT" ] && step optional "project script ($PROJECT_SCRIPT)" -- do_project_script
