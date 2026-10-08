@@ -23,6 +23,10 @@ concurrency:
 
 jobs:
   analyze:
+    # Pinned: with `include:` entries GitHub appends every matrix value to the
+    # default job name ("analyze (python, codeql/…)"), and the required status
+    # check is "analyze (python)", so it would wait for a job that never reports.
+    name: analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -32,9 +36,10 @@ jobs:
       matrix:
         include:
           # Python also runs the code-quality suite (maintainability and
-          # reliability, not security) on top of the default queries. GitHub's
-          # managed Code Quality analysis selects files by extension too and so
-          # never sees msbctl; this copy-based run is what covers it.
+          # reliability, not security) on top of the default queries. Its findings
+          # are ordinary code-scanning alerts (Security tab, PR annotations), so
+          # this needs neither GitHub's paid Code Quality product nor its managed
+          # analysis, which selects files by extension and would miss msbctl.
           # `packs:`, not `queries:`: `queries:` reads `owner/repo:path` as a GitHub
           # repo reference and init fails ("Specifier for external repository is
           # invalid"). `packs:` adds to the default queries instead of replacing them.
