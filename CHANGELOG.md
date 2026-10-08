@@ -20,6 +20,7 @@ release notes.
 
 ### Fixed
 - Input piped into `msbctl exec` (`echo hi | msbctl exec . -- cat`) reaches the command instead of being swallowed, and starting a stopped sandbox no longer writes to its stdout, so it can carry a stream such as ACP.
+- After a sandbox is stopped and started again, its SSH agent works again (signing, `git push`) instead of refusing every connection; no rebuild needed.
 
 ## [0.2.0] - 2026-10-07
 
