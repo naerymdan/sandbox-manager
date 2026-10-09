@@ -280,7 +280,9 @@ rust = [
 # Registries podman pulls from. Docker Hub needs THREE hosts: the registry, the
 # token service, and the CDN that actually serves layer blobs. Missing the last
 # one fails only after auth and manifests succeed, mid-pull, as "connection
-# refused" on production.cloudfront.docker.com. Add quay.io etc. as you need.
+# refused" on production.cloudfront.docker.com. Codeberg's registry is
+# codeberg.org itself (Forgejo serves its packages and their blobs from the
+# same host). Add quay.io etc. as you need.
 containers = [
     "allow@registry-1.docker.io:tcp:443",
     "allow@auth.docker.io:tcp:443",
@@ -288,6 +290,7 @@ containers = [
     "allow@production.cloudfront.docker.com:tcp:443",
     "allow@ghcr.io:tcp:443",
     "allow@pkg-containers.githubusercontent.com:tcp:443",
+    "allow@codeberg.org:tcp:443",
 ]
 
 go = [
