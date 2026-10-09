@@ -611,7 +611,7 @@ def build(out, base="", site_url=SITE_URL):
 
     for name, text in zip(GENERATED, (llms_txt(pages, site_url),
                                       llms_full_txt(pages, site_url),
-                                      sitemap_xml(pages, site_url))):
+                                      sitemap_xml(pages, site_url)), strict=True):
         with open(os.path.join(out, name), "w", encoding="utf-8") as fh:
             fh.write(text)
 

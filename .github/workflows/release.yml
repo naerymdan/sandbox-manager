@@ -2,7 +2,8 @@ name: release
 
 # Pushing a tag vX.Y.Z publishes that release. What gets published is exactly
 # what `scripts/package.sh` builds (tarball, repo-bound get.sh, checksums), which
-# is what `get.sh` and `msbctl self-update` download.
+# is what `get.sh` and `msbctl self-update` download, plus the provenance
+# attestation for those files.
 #
 # To cut a release: move the Unreleased entries in CHANGELOG.md under a new
 # `## [X.Y.Z] - YYYY-MM-DD` heading, set VERSION to X.Y.Z, merge that, then
@@ -59,9 +60,21 @@ jobs:
         run: scripts/package.sh --repo "$GITHUB_REPOSITORY" --out "$RUNNER_TEMP/dist"
 
       - name: Attest build provenance
+        id: attest
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: ${{ runner.temp }}/dist/*
+
+      # The same attestation, published as a release asset too, so it can be
+      # checked with `gh attestation verify --bundle` without asking GitHub's
+      # attestation API, and so OpenSSF Scorecard's Signed-Releases check (which
+      # looks for a *.intoto.jsonl asset) sees provenance. Copied in after the
+      # attestation, so it is not itself a subject, and kept out of
+      # checksums.sha256, which package.sh wrote before it existed.
+      - name: Attach the attestation bundle
+        env:
+          BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+        run: cp "$BUNDLE" "$RUNNER_TEMP/dist/msb-manager-${GITHUB_REF_NAME#v}.intoto.jsonl"
 
       - name: Publish
         env:

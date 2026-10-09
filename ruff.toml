@@ -1,0 +1,27 @@
+# ruff, run by scripts/check.sh (and so by CI). A linter for the Python here,
+# not a formatter: the code keeps its own style.
+#
+# The rules are chosen, not ruff's defaults (which grow between releases and
+# are mostly style): things that are wrong or unsafe, never how code looks.
+# Extensionless scripts (msbctl, scripts/screenshots/bin/*) are not found by
+# ruff on its own; check.sh passes every tracked Python file by name.
+
+target-version = "py311"
+
+[lint]
+select = [
+    "F",      # pyflakes: unused imports and variables, undefined names
+    "E9",     # syntax errors
+    "W6",     # deprecated escape sequences and the like
+    "B",      # bugbear: likely bugs (mutable defaults, zip() lengths, ...)
+    "PLE",    # pylint errors
+    "S",      # bandit: security smells
+    "RUF100", # a `# noqa` that no longer suppresses anything
+]
+ignore = [
+    # Running msb, git, ssh and friends by argv is what msbctl is for, and it
+    # never uses a shell; CodeQL tracks where their arguments come from.
+    "S603", "S606", "S607",
+    # Every /tmp path in msbctl is a path inside the guest VM, not on the host.
+    "S108",
+]
