@@ -8,6 +8,8 @@ release notes.
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-10-09
+
 ### Added
 - Each sandbox's `CLAUDE.md` ends with a short "This sandbox" section listing its features, so the agent knows podman is there; refreshed on every start, and `msbctl edit` → "View the CLAUDE.md it gets" shows the result.
 - A `browsers` feature in `msbctl add` and `edit` (the new `playwright` egress group) lets `playwright install` download its browsers from `cdn.playwright.dev`; an existing sandbox needs it ticked, then a rebuild.
