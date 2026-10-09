@@ -1912,13 +1912,45 @@ def do_create(box):
     run(argv, env=env)
 
     say("Bootstrapping (once)")
-    run(["msb", "exec", box.name, "--no-tty", "--", "sh", "-c",
-         bootstrap_payload(box)], check=False)
+    # Not check=True: a failed bootstrap still leaves a sandbox worth keeping
+    # (to look inside, and the rest of it may work), so everything below still
+    # runs. But it must not look like success either — see bootstrap_failed().
+    boot = run(["msb", "exec", box.name, "--no-tty", "--", "sh", "-c",
+                bootstrap_payload(box)], check=False)
     ensure_bridge(box)
     ensure_profile(box)
     ensure_identity(box)
     ensure_git_checkstat(box)
     ensure_podman_runtime(box)
+    if boot.returncode != 0:
+        bootstrap_failed(box, boot.returncode)
+    return boot.returncode == 0
+
+
+# Sandboxes whose bootstrap failed during this msbctl run. main() exits
+# non-zero if any did, once the command has finished: do_create() itself must
+# not exit, because rename and the edit menu still have work to do after it.
+BOOTSTRAP_FAILURES = []
+
+
+def bootstrap_failed(box, code):
+    """Say, last and loudly, that a sandbox was created but is not set up.
+
+    The bootstrap's own summary is easy to miss: it is in the middle of a long
+    create, and errors on stderr (apt's `E:` lines) can arrive after it.
+    """
+    BOOTSTRAP_FAILURES.append(box.name)
+    sys.stdout.flush()          # after the create's own output, even when piped
+    print(f"\n{BOLD}{RED}== {box.name} is running, but its bootstrap FAILED "
+          f"(exit {code}){RESET}", file=sys.stderr)
+    for line in (
+            "The summary above lists the steps under \"REQUIRED, FAILED\"; the",
+            "reason is in that step's output, and apt's errors can come after the",
+            "summary. The sandbox is kept so you can look inside:",
+            f"  msbctl shell {box.name}",
+            "Fix the cause (usually a missing egress rule), then:",
+            f"  msbctl rebuild {box.name}"):
+        print(f"   {line}", file=sys.stderr)
 
 
 def bootstrap_payload(box):
@@ -6512,6 +6544,8 @@ def main():
                 args.names = [resolve_here(n) for n in args.names or [None]]
         if not hasattr(args, "names"):
             args.func(args, config)
+            if BOOTSTRAP_FAILURES:
+                sys.exit(f"msbctl: bootstrap failed for {', '.join(BOOTSTRAP_FAILURES)} — see above")
         else:
             # Every failure is reported, not just the first. Same stance as
             # bootstrap.sh: with several sandboxes selected, one broken entry
@@ -6524,6 +6558,7 @@ def main():
                 except SystemExit as exc:
                     if exc.code:
                         failed.append(str(exc.code).replace("msbctl: ", "", 1))
+            failed += [f"bootstrap failed for {n} — see above" for n in BOOTSTRAP_FAILURES]
             if failed:
                 sys.exit("msbctl: " + "; ".join(failed))
     except KeyboardInterrupt:

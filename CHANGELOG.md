@@ -11,6 +11,9 @@ release notes.
 ### Added
 - Each release carries its build-provenance attestation as `msb-manager-X.Y.Z.intoto.jsonl`, so `gh attestation verify --bundle` can check a download against it.
 
+### Changed
+- `msbctl rebuild` and `start` (and a rename that recreates the sandbox) end with a red warning and exit non-zero when the bootstrap fails, instead of reporting the sandbox as running; the half-set-up sandbox is kept so you can look inside.
+
 ### Fixed
 - The bootstrap's apt step retries a dropped download and reports FAILED when the install fails, instead of saying "ok" with podman and the base tools missing; a sandbox that hit this needs a rebuild.
 - A secret binding with its own options (`KEY:query@host`) no longer fails at create with "invalid secret option": msbctl now joins its `passthrough=` to them with a comma, as msb expects; run the failed rebuild again.

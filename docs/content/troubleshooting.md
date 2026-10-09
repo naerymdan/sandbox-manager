@@ -35,6 +35,14 @@ failed step at once. Read the error above the summary for the host it couldn't
 reach. Before creating a sandbox, msbctl also warns about install hosts the
 rules don't cover; the usual missing groups are `npm` and `claude`.
 
+The sandbox is still created and left running, so you can look inside with
+`msbctl shell`, but it isn't fully set up. msbctl says so in red at the end and
+exits non-zero, so `msbctl rebuild && …` stops there. Fix the cause and rebuild.
+A `rebuild` removes the old sandbox before creating the new one, so if `msb
+create` itself fails (an image it can't pull, a flag it refuses) there is no
+sandbox until the next successful `rebuild` or `start`. The project, the Claude
+state, package caches and container images are kept either way.
+
 ## Claude Code: `API Error: Connection dropped (ECONNRESET)`
 
 A fresh session works, then every request fails, permanently. This is the
