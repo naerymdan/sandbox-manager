@@ -227,7 +227,9 @@ The setup wizard as a menu of sections, run one at a time against an existing
 sandbox: name and folder, features and agents, resources, package caches,
 container storage, extra folders, published ports, egress rules, SSH keys,
 Claude token, GitHub token,
-secrets, identity and autostart, or the files themselves in your editor. Applies
+secrets, identity and autostart, or the files themselves in your editor. "View
+the CLAUDE.md it gets" shows the instructions its agent is given on the next
+start. Applies
 what it can immediately and offers one rebuild at the end for the rest.
 
 ### `msbctl allow`

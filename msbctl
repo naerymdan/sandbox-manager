@@ -60,6 +60,7 @@ import hashlib
 import ipaddress
 import json
 import os
+import pydoc
 import re
 import select
 import shutil
@@ -1650,6 +1651,19 @@ def assemble_profile():
     return True
 
 
+def sandbox_profile_section(box):
+    """A few lines appended to THIS sandbox's copy of CLAUDE.md naming its
+    features, so the agent knows podman is there before it goes looking. From the
+    current config, so after an edit that still needs a rebuild it is ahead of the VM."""
+    feats = current_features(box)
+    if not feats:
+        return ""
+    lines = ["## This sandbox", "",
+             f"`{box.name}` was set up with these features, each installed and its egress allowed:", ""]
+    lines += [f"- **{key}**: {desc}" for key, desc, _ in FEATURES if key in feats]
+    return "\n".join(lines)
+
+
 def ensure_profile(box):
     """Seed the guest's Claude state. Per boot, two files, two different rules.
 
@@ -1676,6 +1690,9 @@ def ensure_profile(box):
     if assemble_profile():          # rebuilt per boot, so an edit lands on the next start
         script.append(f"mkdir -p /root/.claude && "
                       f"cp {GUEST_PROFILE}/CLAUDE.md /root/.claude/CLAUDE.md")
+        # Per sandbox, so it cannot live in the shared, mounted file. As an
+        # argument ($2), never spliced into the script.
+        script.append('[ -z "$2" ] || printf \'\\n%s\\n\' "$2" >> /root/.claude/CLAUDE.md')
     else:
         warn(f"no CLAUDE.md text ({tilde(PROFILE_SHIPPED)} is missing) — nothing to seed")
 
@@ -1696,7 +1713,7 @@ def ensure_profile(box):
                   f"printf '%s\\n' {shq(onboarded_json(*trusted))} > {GUEST_CLAUDE_JSON}; fi")
 
     run(["msb", "exec", box.name, "--no-tty", "--", "sh", "-c", " ; ".join(script),
-         "_", MERGE_CLAUDE_JSON], check=False, quiet=True)
+         "_", MERGE_CLAUDE_JSON, sandbox_profile_section(box)], check=False, quiet=True)
 
 
 # Where ensure_identity() writes the guest's allowed-signers file for ssh
@@ -4263,6 +4280,34 @@ def section_place(box, config, ctx):
         ctx["hand_edited"] = False
 
 
+def sandbox_claude_md(box):
+    """The CLAUDE.md this sandbox gets on its next start, as ensure_profile()
+    builds it: the shared text, then its own section."""
+    text = ""
+    if assemble_profile():
+        with open(os.path.join(PROFILE_DIR, "CLAUDE.md"), encoding="utf-8") as fh:
+            text = fh.read()
+        section = sandbox_profile_section(box)
+        if section:
+            text += f"\n{section}\n"
+    return text
+
+
+def section_claude_md(box, config, ctx):
+    """Read-only: what the agent in this sandbox is told. The shared part is
+    edited from the main menu, the sandbox part follows its features."""
+    if box.claude_auth != "secret":
+        note(f"claude_auth is {box.claude_auth!r}: the sandbox uses the host's own ~/.claude")
+        return
+    text = sandbox_claude_md(box)
+    if not text:
+        note(f"no CLAUDE.md text ({tilde(PROFILE_SHIPPED)} is missing)")
+        return
+    pydoc.pager(text)
+    note("the shared part: main menu → edit your CLAUDE.md additions; "
+         "the \"This sandbox\" part follows Features & agents")
+
+
 def section_files(box, config, ctx):
     """Last resort and escape hatch: the files themselves, in a terminal editor."""
     while True:
@@ -4342,7 +4387,7 @@ def cmd_edit(args, config):
                 continue
             return
         rows = [f"{title:<20} {summary(box)}" for title, _, summary in EDIT_SECTIONS]
-        rows += ["Edit the files in your editor", "Done"]
+        rows += ["View the CLAUDE.md it gets", "Edit the files in your editor", "Done"]
         say(f"Edit {name}  [{state_of(name)}]")
         if ctx["rebuild"]:
             note(f"{DIM}needs a rebuild: {', '.join(sorted(ctx['rebuild']))}{RESET}")
@@ -4353,6 +4398,8 @@ def cmd_edit(args, config):
         try:
             if choice.startswith("Edit the files"):
                 section_files(box, config, ctx)
+            elif choice.startswith("View the CLAUDE.md"):
+                section_claude_md(box, config, ctx)
             else:
                 EDIT_SECTIONS[default][1](box, config, ctx)
         except SystemExit as exc:               # a section's escape/die must not end the menu
