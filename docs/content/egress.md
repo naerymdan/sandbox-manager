@@ -23,6 +23,7 @@ A group is a named list of rules. msb-manager ships these in `defaults.toml`:
 | `rust` | crates.io |
 | `go` | the Go module proxy and checksum database |
 | `containers` | Docker Hub (all three hosts it needs), ghcr.io |
+| `playwright` | Playwright's browser downloads (the `browsers` feature) |
 
 New sandboxes start with `github` and `claude`, and the wizard adds whatever
 the chosen features need. A project lists its groups in `.msb/sandbox.toml`:

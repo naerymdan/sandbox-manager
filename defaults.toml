@@ -295,6 +295,15 @@ go = [
     "allow@sum.golang.org:tcp:443",
 ]
 
+# `playwright install` downloads its browser builds from here, for the npm and
+# the Python package alike. Playwright falls back to other mirrors when this
+# one fails; add one only once it shows up as refused. `install --with-deps`
+# also apt-installs the browsers' system libraries, from the Ubuntu mirrors
+# that are already allowed.
+playwright = [
+    "allow@cdn.playwright.dev:tcp:443",
+]
+
 # ---------------------------------------------------------------------------
 # Secret presets
 #
