@@ -84,6 +84,23 @@ applies on the next start.
 The identity names a `signing_key`, but this sandbox isn't allowed that key.
 `msbctl show` says so under "Credentials". Allow it with `msbctl keys .`.
 
+## `.git/index` disappears for a few seconds after a git command
+
+`git status` right after a `git reset`, `add` or `commit` in the sandbox shows
+every file deleted and untracked, then recovers about 5 seconds later. A host
+editor that watches the repo (zed, or any IDE that polls git) is running
+`git diff` on the host. The index records each file's stat details, which
+differ between the guest and the host, so the host's git rewrites the index
+straight after the sandbox does. The sandbox's view of the file then goes stale
+until it expires.
+
+msbctl prevents this by setting `core.checkStat=minimal` in the project's own
+`.git/config` on every start, unless the repo already sets `core.checkStat`.
+Git then compares only mtime and size, which both sides agree on. For a repo
+that isn't the project's top folder, or before the next start, run
+`git config core.checkStat minimal` in it. `GIT_OPTIONAL_LOCKS=0` for the
+editor doesn't help: `git diff` ignores it.
+
 ## `git push` over SSH fails
 
 - Check that the key is selected: `msbctl keys .`.
