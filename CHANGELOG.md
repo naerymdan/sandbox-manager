@@ -11,6 +11,9 @@ release notes.
 ### Added
 - Each release carries its build-provenance attestation as `msb-manager-X.Y.Z.intoto.jsonl`, so `gh attestation verify --bundle` can check a download against it.
 
+### Changed
+- `msbctl rebuild` and `start` (and a rename that recreates the sandbox) end with a red warning and exit non-zero when the bootstrap fails, instead of reporting the sandbox as running; the half-set-up sandbox is kept so you can look inside.
+
 ### Fixed
 - podman works again after a sandbox restart instead of failing every command with "boot ID differs": each start clears its runtime state left over from the previous boot (images and containers are kept); no rebuild needed.
 - Image update checks only fetch a registry's pull token over https; a registry that names a plain-http (or other) token service is skipped instead.
