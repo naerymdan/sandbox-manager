@@ -14,6 +14,7 @@
 # [defaults]
 # workspaces = "~/workspaces"
 # identity   = "personal"             # a name from [identities] below
+# claude_token = "work"               # a Claude token stored by `msbctl setup`
 # rule_groups = ["github", "claude"]  # groups a new sandbox starts with
 # cpus   = 4
 # memory = "8G"

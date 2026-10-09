@@ -222,6 +222,10 @@ def with_transcript_passthrough(spec):
     return f"{var}:{options + ':' if options else ''}{added}@{hosts}"
 
 
+# The Claude token's binding (see secret_env for why both hosts).
+CLAUDE_SPEC = "CLAUDE_CODE_OAUTH_TOKEN@api.anthropic.com,platform.claude.com"
+
+
 # --------------------------------------------------------------------- output
 
 def say(msg):
@@ -384,6 +388,9 @@ class Sandbox:
         self.containers_disk = self._pick("containers_disk",
                                           defaults.get("containers_disk", ""))
         self.claude_auth = defaults.get("claude_auth", "secret")
+        # Registry only: token names exist on this machine, not in the project.
+        self.claude_token_pinned = self.entry.get("claude_token", "")
+        self.claude_token = self.claude_token_pinned or default_claude_token(config)
         self.identity_name = self._pick("identity", defaults.get("identity"))
 
         self.conf_path = os.path.join(self.project, self.conf)
@@ -646,10 +653,9 @@ class Sandbox:
         wants_github = self.project_cfg.get("secrets", {}).get("github", bool(self.repo))
 
         if self.claude_auth == "secret":
-            token = read_env_file(os.path.join(SECRETS_DIR, "global.env")) \
-                .get("CLAUDE_CODE_OAUTH_TOKEN")
+            token = claude_tokens().get(self.claude_token)
             if token:
-                env["CLAUDE_CODE_OAUTH_TOKEN"] = token
+                env[CLAUDE_TOKEN_VAR] = token
                 # Both hosts: Claude Code talks to api.anthropic.com for
                 # inference and to platform.claude.com on startup. Binding only
                 # the first sends the literal placeholder to the second, which
@@ -662,11 +668,14 @@ class Sandbox:
                 # placeholder is allowed to appear in the BODY — which is where
                 # it lands as soon as the agent reads it back out of its own
                 # environment and it becomes part of the transcript.
-                flags += ["--secret", with_transcript_passthrough(
-                    "CLAUDE_CODE_OAUTH_TOKEN@api.anthropic.com,platform.claude.com")]
+                flags += ["--secret", with_transcript_passthrough(CLAUDE_SPEC)]
+            elif claude_tokens():
+                warn(f"{self.name}: no Claude token named {self.claude_token!r} — Claude Code "
+                     "will not be logged in. Add it with `msbctl setup` → Claude login, or "
+                     f"pick another with `msbctl edit {self.name}` → Claude token.")
             else:
-                warn("no CLAUDE_CODE_OAUTH_TOKEN in secrets/global.env — "
-                     "Claude Code will not be logged in. Run `claude setup-token`.")
+                warn("no Claude token stored — Claude Code will not be logged in. "
+                     "`msbctl setup` → Claude login.")
 
         if wants_github:
             token = read_env_file(os.path.join(SECRETS_DIR, f"{self.name}.env")) \
@@ -3287,6 +3296,41 @@ WELCOME_MARKER = os.path.join(STATE_DIR, "welcome-done")
 GLOBAL_ENV = os.path.join(SECRETS_DIR, "global.env")
 NAME_SLUG = re.compile(r"[a-z][a-z0-9-]*")
 
+# Claude tokens are named, so one machine can hold several accounts (work,
+# personal) and each sandbox picks one. They live in secrets/global.env, one
+# variable each. The token called "main" is the plain CLAUDE_CODE_OAUTH_TOKEN,
+# so the single token stored before names existed is simply "main" and keeps
+# working. Whichever one a sandbox uses, the guest always sees the same
+# CLAUDE_CODE_OAUTH_TOKEN placeholder: only the host-side value differs.
+CLAUDE_TOKEN_VAR = "CLAUDE_CODE_OAUTH_TOKEN"
+CLAUDE_TOKEN_MAIN = "main"
+# No hyphen: the name is upper-cased into a variable name and has to come back.
+CLAUDE_TOKEN_NAME = re.compile(r"[a-z][a-z0-9_]*")
+
+
+def claude_token_var(name):
+    return CLAUDE_TOKEN_VAR if name == CLAUDE_TOKEN_MAIN else f"{CLAUDE_TOKEN_VAR}_{name.upper()}"
+
+
+def claude_tokens(env=None):
+    """{name: value} for every Claude token in secrets/global.env."""
+    env = read_env_file(GLOBAL_ENV) if env is None else env
+    tokens = {}
+    for var, value in env.items():
+        if not value:
+            continue
+        if var == CLAUDE_TOKEN_VAR:
+            tokens[CLAUDE_TOKEN_MAIN] = value
+        elif var.startswith(CLAUDE_TOKEN_VAR + "_"):
+            name = var[len(CLAUDE_TOKEN_VAR) + 1:].lower()
+            if CLAUDE_TOKEN_NAME.fullmatch(name):
+                tokens[name] = value
+    return dict(sorted(tokens.items()))
+
+
+def default_claude_token(config):
+    return config.get("defaults", {}).get("claude_token") or CLAUDE_TOKEN_MAIN
+
 
 def ensure_local_config():
     os.makedirs(CONFIG_DIR, mode=0o700, exist_ok=True)
@@ -3324,7 +3368,7 @@ def needs_welcome(config):
     if os.path.exists(WELCOME_MARKER):
         return False
     configured = (bool(config.get("identities"))
-                  or bool(read_env_file(GLOBAL_ENV).get("CLAUDE_CODE_OAUTH_TOKEN"))
+                  or bool(claude_tokens())
                   or bool(registered()))
     if configured:
         mark_welcomed()
@@ -3431,40 +3475,94 @@ def section_identities(config, ctx):
 
 def _summary_login(config):
     env = read_env_file(GLOBAL_ENV)
-    return ("Claude token stored" if env.get("CLAUDE_CODE_OAUTH_TOKEN") else "no Claude token yet") \
-        + (", GitHub token for update checks" if env.get("GH_TOKEN") else "")
+    tokens = claude_tokens(env)
+    if not tokens:
+        claude = "no Claude token yet"
+    elif len(tokens) == 1:
+        claude = f"Claude token {next(iter(tokens))!r} stored"
+    else:
+        claude = f"{len(tokens)} Claude tokens, default {default_claude_token(config)!r}"
+    return claude + (", GitHub token for update checks" if env.get("GH_TOKEN") else "")
+
+
+def sandboxes_on_token(name, config):
+    """The registered sandboxes whose entry pins Claude token `name`."""
+    return [n for n in registered()
+            if read_toml(registry_path_for(n)).get("claude_token") == name]
 
 
 def section_login(config, ctx):
     while True:
+        config = load_config()
         env = read_env_file(GLOBAL_ENV)
+        tokens = claude_tokens(env)
+        default = default_claude_token(config)
         say("Claude login")
         note("Sandboxes use a long-lived token from `claude setup-token`. It stays on this")
         note("machine: the sandbox sees only a placeholder, and the real value is swapped")
         note("in on the way out to the two Anthropic hosts. Stored 0600 in secrets/global.env.")
-        note(f"  Claude token:  {'stored' if env.get('CLAUDE_CODE_OAUTH_TOKEN') else 'NOT SET'}")
+        note("Keep one per account (say `work` and `personal`); a sandbox uses the default")
+        note("unless `msbctl edit <name>` → Claude token picks another.")
+        if not tokens:
+            note("  Claude tokens:  NOT SET")
+        for name in tokens:
+            pinned = sandboxes_on_token(name, config)
+            note(f"  Claude token:  {name}{'  (default)' if name == default else ''}"
+                 + (f"  — pinned by {', '.join(pinned)}" if pinned else ""))
+        if tokens and default not in tokens:
+            warn(f"the default token {default!r} is not stored — pick another default")
         note(f"  GitHub token:  {'stored' if env.get('GH_TOKEN') else 'not set (optional)'}")
-        rows = ["paste a Claude token"]
+        rows = ["add a Claude token (or replace one)"]
         if shutil.which("claude"):
-            rows.append("run `claude setup-token` now, then paste")
-        rows += ["remove the Claude token",
-                 "set a GitHub token for update checks  (optional, host-side only)", "back"]
+            rows.append("run `claude setup-token` now, then add")
+        if len(tokens) > 1 or (tokens and default not in tokens):
+            rows.append("choose the default Claude token")
+        if tokens:
+            rows.append("remove a Claude token")
+        rows += ["set a GitHub token for update checks  (optional, host-side only)", "back"]
         action = choose_one("login", rows, 0)
         if action.startswith("run"):
             subprocess.run(["claude", "setup-token"])
-            action = "paste a Claude token"
-        if action.startswith("paste"):
-            token = read_secret_hidden("paste the token")
+            action = "add"
+        if action.startswith("add"):
+            suggest = "" if tokens else CLAUDE_TOKEN_MAIN
+            name = ask("name for it (e.g. work, personal)", suggest).strip().lower()
+            if not CLAUDE_TOKEN_NAME.fullmatch(name):
+                note("skipped — a name is a lowercase letter, then letters, digits or _")
+                continue
+            token = read_secret_hidden(f"paste the {name} token")
             if not token or any(c.isspace() for c in token):
                 note("skipped — nothing saved")
                 continue
             if not token.startswith("sk-ant-"):
                 warn("that does not look like a Claude token (they start with sk-ant-) — saved anyway")
-            set_env_file_value(GLOBAL_ENV, "CLAUDE_CODE_OAUTH_TOKEN", token)
-            note(f"stored in {tilde(GLOBAL_ENV)} (0600)")
+            set_env_file_value(GLOBAL_ENV, claude_token_var(name), token)
+            note(f"stored {name!r} in {tilde(GLOBAL_ENV)} (0600); running sandboxes "
+                 "pick it up on their next start")
+            if not tokens and name != default:
+                # The first token is the default, whatever it is called.
+                set_toml_key(CONFIG_FILE, "claude_token", name, table="defaults")
+                note(f"{name!r} is now the default")
+        elif action.startswith("choose"):
+            names = list(tokens)
+            pick = choose_one("default Claude token", names,
+                              names.index(default) if default in names else 0)
+            set_toml_key(CONFIG_FILE, "claude_token", pick, table="defaults")
+            note(f"default is {pick!r}: every sandbox that does not pin one uses it "
+                 "from its next start")
         elif action.startswith("remove"):
-            set_env_file_value(GLOBAL_ENV, "CLAUDE_CODE_OAUTH_TOKEN", None)
-            note("removed")
+            names = list(tokens)
+            name = choose_one("remove which", names + ["cancel"], 0)
+            if name == "cancel":
+                continue
+            set_env_file_value(GLOBAL_ENV, claude_token_var(name), None)
+            note(f"removed {name!r}")
+            pinned = sandboxes_on_token(name, config)
+            if pinned:
+                warn(f"{', '.join(pinned)} still pin {name!r} and will not be logged in "
+                     "— `msbctl edit <name>` → Claude token")
+            if name == default and len(names) > 1:
+                note("that was the default — choose another")
         elif action.startswith("set a GitHub"):
             note("A token with NO scopes is enough: it only raises the anonymous 60/hour limit.")
             token = read_secret_hidden("paste the GitHub token")
@@ -4059,6 +4157,47 @@ def section_github(box, config, ctx):
             run(["msb", "modify", box.name, "--secret-rm", "GH_TOKEN"], env=env, check=False)
 
 
+def _summary_claude_token(box):
+    if box.claude_auth != "secret":
+        return f"claude_auth = {box.claude_auth!r}, no token"
+    stored = box.claude_token in claude_tokens()
+    which = box.claude_token if box.claude_token_pinned else f"the default ({box.claude_token})"
+    return which + ("" if stored else " — NOT STORED")
+
+
+def section_claude_token(box, config, ctx):
+    """Which named Claude token this sandbox logs in with. The value is read on
+    every start, so a change is a restart, never a rebuild."""
+    say("Claude token")
+    tokens = claude_tokens()
+    if box.claude_auth != "secret":
+        note(f"claude_auth is {box.claude_auth!r}, so no token is bound")
+        return
+    if not tokens:
+        note("no Claude tokens stored yet — `msbctl setup` → Claude login")
+        return
+    default = default_claude_token(config)
+    follow = f"the default  (now {default})"
+    options = [follow] + list(tokens)
+    current = box.claude_token_pinned if box.claude_token_pinned in tokens else follow
+    choice = choose_one("Claude token", options, options.index(current))
+    pin = "" if choice == follow else choice
+    if pin == box.claude_token_pinned:
+        return
+    set_toml_key(registry_path(box), "claude_token", pin)
+    state = state_of(box.name)
+    if state != "running":
+        note("used from its next start")
+        return
+    if not confirm(f"apply now — this restarts {box.name}?"):
+        note("saved; used from the next restart")
+        return
+    # msb reads a secret's value at start, so a restart is the whole change: the
+    # binding and the guest's placeholder stay the same, only the value differs.
+    run(["msb", "stop", box.name], check=False, quiet=True)
+    ensure_running(Sandbox(box.name, config))
+
+
 def _summary_identity(box):
     return f"{box.identity_name or 'no identity'}, autostart {'on' if box.autostart else 'off'}"
 
@@ -4156,6 +4295,7 @@ EDIT_SECTIONS = [
     ("Published ports", section_ports, _summary_ports),
     ("Egress rules", section_egress, _summary_egress),
     ("SSH keys", section_keys, _summary_keys),
+    ("Claude token", section_claude_token, _summary_claude_token),
     ("GitHub token", section_github, _summary_github),
     ("Secrets", section_secrets, _summary_secrets),
     ("Identity & autostart", section_identity, _summary_identity),
@@ -4466,6 +4606,10 @@ def cmd_show(args, config):
                  f"use — `msbctl keys {box.name}`")
     else:
         note("  git  no identity set; a repo without one cannot commit here")
+    if box.claude_auth == "secret":
+        missing = "" if box.claude_token in claude_tokens() else f"  {RED}NOT STORED{RESET}"
+        note(f"  claude  token {box.claude_token!r}"
+             f"{'' if box.claude_token_pinned else ' (the default)'}{missing}")
     secret_flags, _ = box.secret_env()
     bound = [secret_flags[i + 1] for i, f in enumerate(secret_flags)
              if f == "--secret"]
@@ -5643,7 +5787,16 @@ def cmd_add(args, config):
         elif not digest:
             warn("could not resolve a digest — leaving the tag unpinned")
 
-    # ------------------------------------------------------------- the token
+    # ------------------------------------------------------------- the tokens
+    claude_token = ""
+    tokens = claude_tokens()
+    if len(tokens) > 1 and config.get("defaults", {}).get("claude_auth", "secret") == "secret":
+        say("Claude token")
+        default = default_claude_token(config)
+        follow = f"the default  (now {default})"
+        choice = choose_one("which Claude account this sandbox uses", [follow] + list(tokens), 0)
+        claude_token = "" if choice == follow else choice
+
     want_github = bool(repo)
     if want_github:
         say("GitHub token")
@@ -5659,6 +5812,7 @@ def cmd_add(args, config):
         fh.write(render("registry.toml.in", NAME=name, PROJECT=project,
                         GUEST_PATH=guest_path,
                         REPO=repo, DATE=today, IDENTITY=identity,
+                        CLAUDE_TOKEN=claude_token,
                         SSH_KEYS=format_ssh_keys(ssh_keys),
                         MOUNTS=format_list("mounts", mounts, '# mounts = ["~/reference:/mnt/reference:ro"]'),
                         AUTOSTART="true" if autostart else "false"))

@@ -36,6 +36,11 @@ repo = "{{REPO}}"
 # no identity of its own. Empty for none.
 identity = "{{IDENTITY}}"
 
+# Which Claude token this sandbox logs in with, by the name it was stored under
+# (`msbctl setup` → Claude login). Empty follows [defaults] claude_token. The
+# value is read on every start, so a change needs a restart, not a rebuild.
+claude_token = "{{CLAUDE_TOKEN}}"
+
 # Started by the picker's "start autostart set" action. Each idle sandbox costs
 # ~300 MB, so this is cheap, but a stopped sandbox cannot be version-probed.
 autostart = {{AUTOSTART}}
