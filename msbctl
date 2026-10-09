@@ -1766,6 +1766,34 @@ def ensure_identity(box):
              f"cannot use, so commits are NOT signed — `msbctl keys {box.name}` to allow it")
 
 
+def ensure_git_checkstat(box):
+    """Set core.checkStat=minimal in the project's own repo, unless it already
+    sets core.checkStat. Per boot, so an existing sandbox gets it on its next
+    start.
+
+    Without it, `.git/index` vanishes for ~5 s after any git command in the
+    guest that writes it, whenever a host editor watches the repo (zed, and
+    any IDE that polls git). The index records each file's full stat, and
+    what the guest sees (uid 0, its own inode numbers) never matches what the
+    host sees, so the host's `git diff` finds every entry stale and writes a
+    refreshed index over the guest's. The virtiofs entry the guest still
+    holds then answers ENOENT until it expires, and `git status` in that
+    window reports every file deleted and untracked. --no-optional-locks /
+    GIT_OPTIONAL_LOCKS=0 does not help: zed already passes it, and `git diff`
+    against the work tree ignores it (git 2.55). Comparing only mtime and
+    size, which both sides agree on, leaves nothing to refresh.
+
+    It lands in the repo's .git/config, on the host too, where it is equally
+    harmless. Only a top-level `.git` is touched: a linked worktree's `.git`
+    file names a host path that may not exist in the guest.
+    """
+    script = ('[ -e .git ] || exit 0; '
+              'git config --local --get core.checkStat >/dev/null '
+              '|| git config --local core.checkStat minimal')
+    run(["msb", "exec", box.name, "--no-tty", "--workdir", box.guest_project,
+         "--", "sh", "-c", script], check=False, quiet=True)
+
+
 def ensure_running(box, table=None):
     """Start a stopped sandbox; refuse to create a missing one.
 
@@ -1787,6 +1815,7 @@ def ensure_running(box, table=None):
     ensure_bridge(box)
     ensure_profile(box)
     ensure_identity(box)
+    ensure_git_checkstat(box)
 
 
 # ------------------------------------------------------------------ lifecycle
@@ -1858,6 +1887,7 @@ def do_create(box):
     ensure_bridge(box)
     ensure_profile(box)
     ensure_identity(box)
+    ensure_git_checkstat(box)
 
 
 def bootstrap_payload(box):
