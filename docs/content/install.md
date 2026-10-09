@@ -74,6 +74,16 @@ $ gh attestation verify msb-manager-0.2.2.tar.gz --repo runoverlabs/sandbox-mana
 logged in, refuse to install if it fails, and tell you plainly when only the
 checksum could be checked. Set `MSB_MANAGER_SKIP_ATTEST=1` to skip it.
 
+The attestation is also attached to each release (from 0.2.4 on) as
+`msb-manager-X.Y.Z.intoto.jsonl`. Download it beside the tarball and pass it
+with `--bundle` to check against that file instead of GitHub's attestation API:
+
+```console
+$ gh attestation verify msb-manager-0.2.4.tar.gz --repo runoverlabs/sandbox-manager \
+    --bundle msb-manager-0.2.4.intoto.jsonl \
+    --signer-workflow runoverlabs/sandbox-manager/.github/workflows/release.yml
+```
+
 ## From a checkout (development)
 
 ```console

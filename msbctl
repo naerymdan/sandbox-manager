@@ -1479,8 +1479,8 @@ def _pick_ssh_keys(current, preselect_all, signing):
             for fp in current or [] if fp not in known]
 
     options, ids, labels = [], {}, {}
-    for header, items in ((f"agent:" + ("" if agent else " (no keys loaded)"), agent),
-                          (f"~/.ssh:" + ("" if disk else " (no key files found)"), disk),
+    for header, items in (("agent:" + ("" if agent else " (no keys loaded)"), agent),
+                          ("~/.ssh:" + ("" if disk else " (no key files found)"), disk),
                           ("selected earlier:" if gone else "", gone)):
         if not header:
             continue
@@ -1995,7 +1995,7 @@ def cmd_purge(args, config):
     write_json(VERSIONS_CACHE, cache)
     note(f"{box.name} purged")
     if box.repo:
-        note(f"Revoke its PAT: https://github.com/settings/personal-access-tokens")
+        note("Revoke its PAT: https://github.com/settings/personal-access-tokens")
 
 
 # ------------------------------------------------------------- rename and move
@@ -2811,9 +2811,10 @@ def _observe_report(box):
 
     head = ("HOST", "PORT", "HITS", "LAST SEEN", "")
     widths = [max(len(str(r[i])) for r in [head] + rows) for i in range(4)]
-    print(f"   {BOLD}" + "  ".join(h.ljust(w) for h, w in zip(head, widths)) + RESET)
+    # strict=False: the last heading has no width, since nothing is padded after it.
+    print(f"   {BOLD}" + "  ".join(h.ljust(w) for h, w in zip(head, widths, strict=False)) + RESET)
     for host, port, hits, last, covered in rows:
-        cells = "  ".join(c.ljust(w) for c, w in zip((host, port, hits, last), widths))
+        cells = "  ".join(c.ljust(w) for c, w in zip((host, port, hits, last), widths, strict=True))
         mark = f"{DIM}allowed{RESET}" if covered else f"{RED}NOT ALLOWED{RESET}"
         print(f"   {cells}  {mark}")
 
@@ -3349,8 +3350,8 @@ NAME_SLUG = re.compile(r"[a-z][a-z0-9-]*")
 # so the single token stored before names existed is simply "main" and keeps
 # working. Whichever one a sandbox uses, the guest always sees the same
 # CLAUDE_CODE_OAUTH_TOKEN placeholder: only the host-side value differs.
-CLAUDE_TOKEN_VAR = "CLAUDE_CODE_OAUTH_TOKEN"
-CLAUDE_TOKEN_MAIN = "main"
+CLAUDE_TOKEN_VAR = "CLAUDE_CODE_OAUTH_TOKEN"   # noqa: S105  a variable name
+CLAUDE_TOKEN_MAIN = "main"                      # noqa: S105  a token's name
 # No hyphen: the name is upper-cased into a variable name and has to come back.
 CLAUDE_TOKEN_NAME = re.compile(r"[a-z][a-z0-9_]*")
 
@@ -4572,9 +4573,9 @@ def cmd_ls(args, config):
                                             "UPDATES", "AUTOSTART")] + rows)
               for i in range(5)]
     header = ("NAME", "STATE", "PROJECT", "UPDATES", "AUTOSTART")
-    print(BOLD + "  ".join(h.ljust(w) for h, w in zip(header, widths)) + RESET)
+    print(BOLD + "  ".join(h.ljust(w) for h, w in zip(header, widths, strict=True)) + RESET)
     for row in rows:
-        print("  ".join(str(c).ljust(w) for c, w in zip(row, widths)))
+        print("  ".join(str(c).ljust(w) for c, w in zip(row, widths, strict=True)))
 
 
 def cmd_entry(args, config):
@@ -4745,10 +4746,14 @@ def ssh_agent_lines(box):
 # ------------------------------------------------------------------- versions
 
 def http_json(url, headers=None, timeout=15):
-    req = urllib.request.Request(url, headers=headers or {})
+    # https only: a registry's token realm is a URL the registry picks, and
+    # urllib would as happily open http:// (or file://) as https://.
+    if not url.startswith("https://"):
+        return None
+    req = urllib.request.Request(url, headers=headers or {})  # noqa: S310  checked above
     req.add_header("User-Agent", "msbctl")
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310  checked above
             return json.load(resp)
     except (urllib.error.URLError, json.JSONDecodeError, TimeoutError):
         return None
@@ -4811,7 +4816,7 @@ def available_digest(image):
         req.add_header("User-Agent", "msbctl")
         if bearer:
             req.add_header("Authorization", f"Bearer {bearer}")
-        return urllib.request.urlopen(req, timeout=15)
+        return urllib.request.urlopen(req, timeout=15)  # noqa: S310  https:// url
 
     try:
         try:
@@ -4822,7 +4827,7 @@ def available_digest(image):
             challenge = exc.headers.get("WWW-Authenticate", "")
             fields = dict(re.findall(r'(\w+)="([^"]*)"', challenge))
             realm = fields.get("realm")
-            if not realm:
+            if not realm:                  # http_json() refuses a non-https realm
                 return None
             query = "&".join(f"{k}={v}" for k, v in (
                 ("service", fields.get("service", "")),
@@ -4953,7 +4958,7 @@ def cmd_update(args, config):
         if comp in ("gh", "gitleaks", "bun"):
             target = (cache.get(box.name, {}).get(comp, {}) or {}).get("available")
             if not target:
-                note(f"no known upstream version — run `msbctl ls --refresh` first")
+                note("no known upstream version — run `msbctl ls --refresh` first")
                 continue
             script = installer_script(comp, target)
         elif comp in UPDATERS:
@@ -6131,7 +6136,7 @@ def edit_file(path, *, must_exist=True):
         return
     editor = text_editor()
     if not editor:
-        note(f"no terminal editor found — set $EDITOR. The file is:")
+        note("no terminal editor found — set $EDITOR. The file is:")
         note(f"  {path}")
         return
     subprocess.run([*editor.split(), path])

@@ -141,7 +141,9 @@ gh attestation verify msb-manager-0.1.0.tar.gz --repo runoverlabs/sandbox-manage
 
 `get.sh` and `msbctl self-update` run that check automatically when `gh` is
 logged in, refuse to install on a failure, and say plainly when they could only
-check the checksum. `MSB_MANAGER_SKIP_ATTEST=1` skips it.
+check the checksum. `MSB_MANAGER_SKIP_ATTEST=1` skips it. From 0.2.4 on the
+attestation is also a release asset, `msb-manager-X.Y.Z.intoto.jsonl`, for
+`gh attestation verify --bundle`.
 
 ### Releasing
 

@@ -6,9 +6,9 @@
 #   scripts/check.sh
 #
 # Needs no msb, no KVM and no network: Python 3.11+, bash, git, and (if
-# installed; CI has it) shellcheck. Each check records its outcome and the
-# failures are summarized together, same as bootstrap.sh, so one run shows
-# everything that is wrong rather than the first thing.
+# installed; CI has them) shellcheck, ruff and gitleaks. Each check records its
+# outcome and the failures are summarized together, same as bootstrap.sh, so
+# one run shows everything that is wrong rather than the first thing.
 
 set -uo pipefail
 cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." || exit 1
@@ -42,6 +42,20 @@ if command -v shellcheck >/dev/null 2>&1; then
 	fi
 else
 	skip "shellcheck not installed"
+fi
+
+echo "ruff"
+# ruff.toml says which rules and why. Python files without a .py (msbctl, the
+# screenshot wrappers) are found by their shebang and passed by name.
+if command -v ruff >/dev/null 2>&1; then
+	mapfile -t py < <({ git ls-files '*.py'; git grep -lI '^#!.*python' -- ':!*.py'; } | sort -u)
+	if ruff check --no-cache --quiet "${py[@]}"; then
+		ok "no findings in ${#py[@]} files"
+	else
+		bad "ruff reported findings"
+	fi
+else
+	skip "ruff not installed"
 fi
 
 echo "toml"

@@ -17,3 +17,6 @@ dist/
 
 # The documentation site, built by docs/build.py.
 docs/_site/
+
+# ruff, when run by hand (check.sh passes --no-cache)
+.ruff_cache/

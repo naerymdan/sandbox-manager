@@ -44,6 +44,21 @@ jobs:
           tar -xzf "$RUNNER_TEMP/$f" -C "$RUNNER_TEMP/bin" gitleaks
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
 
+      # Same arrangement as gitleaks: the hash is the release's
+      # ruff-x86_64-unknown-linux-gnu.tar.gz.sha256.
+      - name: Install ruff
+        env:
+          RUFF_VERSION: 0.16.10
+          RUFF_SHA256: 9567ff1201e2fb3da31ff04c35587d768c66d6cb42dfa84de474e2bfe360b608
+        run: |
+          f="ruff-x86_64-unknown-linux-gnu.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$f" \
+            "https://github.com/astral-sh/ruff/releases/download/${RUFF_VERSION}/$f"
+          echo "$RUFF_SHA256  $RUNNER_TEMP/$f" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/bin"
+          tar -xzf "$RUNNER_TEMP/$f" -C "$RUNNER_TEMP/bin" --strip-components=1 ruff-x86_64-unknown-linux-gnu/ruff
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+
       - name: Static checks
         run: scripts/check.sh
 

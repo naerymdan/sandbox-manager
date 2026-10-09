@@ -8,6 +8,12 @@ release notes.
 
 ## [Unreleased]
 
+### Added
+- Each release carries its build-provenance attestation as `msb-manager-X.Y.Z.intoto.jsonl`, so `gh attestation verify --bundle` can check a download against it.
+
+### Fixed
+- Image update checks only fetch a registry's pull token over https; a registry that names a plain-http (or other) token service is skipped instead.
+
 ## [0.2.3] - 2026-10-09
 
 ### Added
