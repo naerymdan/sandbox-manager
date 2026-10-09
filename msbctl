@@ -1794,6 +1794,33 @@ def ensure_git_checkstat(box):
          "--", "sh", "-c", script], check=False, quiet=True)
 
 
+def ensure_podman_runtime(box):
+    """Clear podman's runtime state if it is left over from an earlier boot.
+
+    Podman keeps it under /run, assuming /run is a tmpfs a reboot empties. In
+    a microsandbox guest /run is just part of the root disk, so it survives a
+    stop/start, and every podman command after the restart fails with "boot
+    ID differs from cached boot ID; an unhandled reboot has occurred. Please
+    delete directories /run/containers/storage and /run/libpod". This does
+    what that message asks, and what a reboot would have done: images,
+    volumes and container definitions live in /var/lib/containers and are
+    untouched, and podman marks the containers stopped on its next run.
+
+    It runs on every `shell`/`exec`, not just after a boot, so it uses
+    podman's own test: /run/libpod/alive holds the boot ID podman last ran
+    under, and only one that differs from this boot's means stale state. A
+    sandbox whose podman is running containers right now is left alone.
+    All of /run/containers goes (netavark's aardvark-dns pid and config live
+    there too; network definitions do not), and crun's and runc's state with
+    it: they make the same assumption about /run.
+    """
+    script = ('a=/run/libpod/alive; [ -f "$a" ] || exit 0; '
+              '[ "$(cat "$a")" = "$(cat /proc/sys/kernel/random/boot_id)" ] && exit 0; '
+              'rm -rf /run/containers /run/libpod /run/crun /run/runc')
+    run(["msb", "exec", box.name, "--no-tty", "--", "sh", "-c", script],
+        check=False, quiet=True)
+
+
 def ensure_running(box, table=None):
     """Start a stopped sandbox; refuse to create a missing one.
 
@@ -1816,6 +1843,7 @@ def ensure_running(box, table=None):
     ensure_profile(box)
     ensure_identity(box)
     ensure_git_checkstat(box)
+    ensure_podman_runtime(box)
 
 
 # ------------------------------------------------------------------ lifecycle
@@ -1888,6 +1916,7 @@ def do_create(box):
     ensure_profile(box)
     ensure_identity(box)
     ensure_git_checkstat(box)
+    ensure_podman_runtime(box)
 
 
 def bootstrap_payload(box):

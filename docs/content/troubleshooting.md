@@ -101,6 +101,19 @@ that isn't the project's top folder, or before the next start, run
 `git config core.checkStat minimal` in it. `GIT_OPTIONAL_LOCKS=0` for the
 editor doesn't help: `git diff` ignores it.
 
+## podman: "boot ID differs from cached boot ID"
+
+Every podman command fails like this after the sandbox restarts. Podman keeps
+its runtime state in `/run` and expects a reboot to empty it, but inside a
+sandbox `/run` is part of the disk and survives a stop/start.
+
+msbctl clears that state when it starts the sandbox (`msbctl start`, `shell`,
+`exec`, the picker), but only if it's left over from an earlier boot, so
+running containers are never touched. Images, volumes and container
+definitions are kept. If you started the sandbox some other way (with `msb`
+directly), run `msbctl shell .` once, or delete what podman names yourself:
+`rm -rf /run/containers /run/libpod`.
+
 ## `git push` over SSH fails
 
 - Check that the key is selected: `msbctl keys .`.
