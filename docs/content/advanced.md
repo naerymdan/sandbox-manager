@@ -203,6 +203,12 @@ start. Edit it from the main menu ("edit your CLAUDE.md additions") or directly.
 Editing the copy *inside* a sandbox does nothing: it's overwritten on the next
 start.
 
+Each sandbox's copy also ends with a short "This sandbox" section, written by
+msbctl: one line per feature it has (podman, python, …). It's built from the current config on every start, so after
+an edit that still needs a rebuild it describes the sandbox you'll get, not yet
+the one that's running. `msbctl edit <name>` → "View the CLAUDE.md it gets"
+shows the whole file as that sandbox will receive it.
+
 ## Autostart
 
 Mark a sandbox to start whenever the picker opens:
