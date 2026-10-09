@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Screenshot harness: the real msbctl, minus the /dev/kvm preflight.
-import importlib.machinery, importlib.util, os, sys
+import importlib.machinery, importlib.util, os
 real = os.environ["MSBCTL_REAL"]
 _exists = os.path.exists
 os.path.exists = lambda p: True if p == "/dev/kvm" else _exists(p)
