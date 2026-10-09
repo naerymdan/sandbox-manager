@@ -40,6 +40,16 @@ token, and `<name>.env` per sandbox. Both are mode 0600, outside every project.
 `platform.claude.com`, plus its own `~/.claude`, kept on the host at
 `~/.local/state/msb/claude/<name>/`.
 
+You can keep more than one, one per account. "Add a Claude token" asks for a
+name (`work`, `personal`) and stores each under its own variable; "choose the
+default Claude token" sets `[defaults] claude_token` in `config.toml`, which
+every sandbox uses unless it picks its own with `msbctl edit` → "Claude token".
+That choice is `claude_token` in the sandbox's registry entry, never in the
+committed `sandbox.toml`. The value is read on every start, so switching is a
+restart, not a rebuild, and the guest sees the same `CLAUDE_CODE_OAUTH_TOKEN`
+placeholder whichever token is behind it. `msbctl show` names the one in use. A
+token stored before names existed is the one called `main`.
+
 > **Note:** `claude_auth = "mount"` in your config shares the host's real
 > `~/.claude` with every sandbox instead. That means shared history, but also
 > your real credentials and every project's transcripts in every VM. It's a

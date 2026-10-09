@@ -60,9 +60,10 @@ startup. Both hosts in the `claude` group are needed: check the project's
 
 ## Claude Code isn't logged in
 
-There's no `CLAUDE_CODE_OAUTH_TOKEN` in `~/.config/msb/secrets/global.env`.
-Run `msbctl setup` → "Claude login" (or `claude setup-token` on the host and
-paste the result), then restart the sandbox.
+The sandbox's Claude token isn't stored: `msbctl show <name>` says which one it
+uses and flags it as NOT STORED. Run `msbctl setup` → "Claude login" to add it
+(or `claude setup-token` on the host and paste the result), or pick a token you
+have with `msbctl edit <name>` → "Claude token", then restart the sandbox.
 
 ## A name on my LAN returns NXDOMAIN
 

@@ -24,7 +24,8 @@ them later:
   `git config --system`, so a repo's own identity still wins.
 - **Claude login**: a long-lived token from `claude setup-token`, stored in
   `~/.config/msb/secrets/global.env` (mode 0600). Sandboxes get a placeholder
-  for it; the real token never enters a VM.
+  for it; the real token never enters a VM. You can store several under names
+  (say `work` and `personal`) and pick a default.
 - **Your network**: egress groups for your own machines, such as a Git server
   or a package mirror on your LAN.
 - **New-sandbox defaults**: where projects live, the default cpus and memory,

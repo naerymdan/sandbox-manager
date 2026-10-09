@@ -100,6 +100,12 @@ private_dns_groups = []
 # Set to "mount" only if spikes/07-claude-token-secret.sh fails.
 claude_auth = "secret"
 
+# Which stored Claude token (by name, `msbctl setup` → Claude login) a sandbox
+# uses unless its registry entry names another. "main" is the plain
+# CLAUDE_CODE_OAUTH_TOKEN in secrets/global.env, i.e. a token stored before
+# tokens had names. `msbctl setup` sets this when you choose a default.
+claude_token = "main"
+
 # Which [identities] entry (defined in your local config.toml) a new sandbox
 # gets unless its registry entry says
 # otherwise. Set to "" for none, and `git commit` then needs an identity from

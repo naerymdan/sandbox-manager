@@ -49,6 +49,7 @@ including a whole egress group, replaces the shipped value.
 | `egress_mode` | `"enforce"` | `"observe"` stops blocking (per sandbox is better: `msbctl observe`) |
 | `private_dns_groups` | `[]` | groups whose names resolve to private addresses; projects using one get `allow_private_dns` |
 | `claude_auth` | `"secret"` | `"mount"` shares the host's real `~/.claude` instead. A fallback only |
+| `claude_token` | `"main"` | the stored Claude token a sandbox uses unless its registry entry sets `claude_token` |
 | `identity` | `""` | the `[identities]` entry new sandboxes use |
 
 ### `[identities.<name>]`
