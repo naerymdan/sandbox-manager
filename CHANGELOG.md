@@ -13,6 +13,7 @@ release notes.
 
 ### Fixed
 - The bootstrap's apt step retries a dropped download and reports FAILED when the install fails, instead of saying "ok" with podman and the base tools missing; a sandbox that hit this needs a rebuild.
+- A secret binding with its own options (`KEY:query@host`) no longer fails at create with "invalid secret option": msbctl now joins its `passthrough=` to them with a comma, as msb expects; run the failed rebuild again.
 - podman works again after a sandbox restart instead of failing every command with "boot ID differs": each start clears its runtime state left over from the previous boot (images and containers are kept); no rebuild needed.
 - Image update checks only fetch a registry's pull token over https; a registry that names a plain-http (or other) token service is skipped instead.
 
