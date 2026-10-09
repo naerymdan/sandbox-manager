@@ -8,6 +8,8 @@ release notes.
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-10-09
+
 ### Added
 - Each release carries its build-provenance attestation as `msb-manager-X.Y.Z.intoto.jsonl`, so `gh attestation verify --bundle` can check a download against it.
 
