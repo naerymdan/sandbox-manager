@@ -5481,6 +5481,11 @@ FEATURES = [
      {"groups": ["go"], "languages": ["Go"], "packages": ["golang-go"]}),
     ("podman", "containers inside the sandbox (podman)",
      {"groups": ["containers"], "packages": ["podman", "nftables"]}),
+    # Whatever installs Playwright (npm, pip) fetches its browsers separately,
+    # from its own CDN, so this is its own feature rather than part of npm or
+    # python. No language says "uses Playwright", so nothing preselects it.
+    ("browsers", "headless browser downloads for Playwright",
+     {"groups": ["playwright"]}),
 ]
 
 

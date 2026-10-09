@@ -9,6 +9,7 @@ release notes.
 ## [Unreleased]
 
 ### Added
+- A `browsers` feature in `msbctl add` and `edit` (the new `playwright` egress group) lets `playwright install` download its browsers from `cdn.playwright.dev`; an existing sandbox needs it ticked, then a rebuild.
 - The `containers` egress group (the podman feature) allows `codeberg.org`, so images pull from Codeberg's registry; existing sandboxes need a rebuild.
 
 ### Added
