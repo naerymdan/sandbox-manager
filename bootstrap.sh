@@ -107,16 +107,34 @@ do_apt() {
 	# default egress allowlist, so apt is the only route available. nano is what
 	# EDITOR names in defaults.toml, so it must exist whatever the image is.
 	#
-	# shellcheck disable=SC2086 # deliberate word splitting: a package list
-	apt-get install -y -qq --no-install-recommends \
-		socat jq curl ca-certificates ripgrep fd-find tree unzip file \
-		yamllint shellcheck gnupg openssh-client nano $EXTRA_PACKAGES
-	command -v socat >/dev/null   # no socat, no agent bridge
+	#
+	# One dropped connection fails the whole list: apt fetches every .deb
+	# before installing any, and refuses to install if one is missing (seen on
+	# msb 0.7.8: "OpenSSL error ... unexpected eof while reading" on a single
+	# archive.ubuntu.com download, everything else fetched). Acquire::Retries
+	# retries that file; the second pass is for a failure that outlasts it,
+	# and only fetches what the first did not, since the rest is in apt's
+	# cache by then.
+	local pkgs=(socat jq curl ca-certificates ripgrep fd-find tree unzip file
+		yamllint shellcheck gnupg openssh-client nano)
+	# shellcheck disable=SC2206 # deliberate word splitting: a package list
+	pkgs+=($EXTRA_PACKAGES)
+	local attempt rc=1
+	for attempt in 1 2; do
+		apt-get install -y -qq --no-install-recommends -o Acquire::Retries=3 \
+			"${pkgs[@]}" && { rc=0; break; }
+		[ "$attempt" -eq 1 ] && echo "   apt install failed; trying once more" >&2
+	done
 	# Debian/Ubuntu name the binary fdfind to avoid a clash; everyone else's
 	# docs and muscle memory say fd.
 	if command -v fdfind >/dev/null && ! command -v fd >/dev/null; then
 		ln -s "$(command -v fdfind)" /usr/local/bin/fd
 	fi
+	# The step's result is the INSTALL's, checked explicitly: this function
+	# used to end on the `if` above, which is 0 when there is nothing to link,
+	# so a failed install reported "ok" with nothing installed.
+	[ "$rc" -eq 0 ] || return 1
+	command -v socat >/dev/null   # no socat, no agent bridge
 }
 
 # The key NodeSource signs its apt repository with. Pinned, so that what the
